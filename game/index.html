@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Treasure Hunt</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <div id="ui">
+      <div id="gold-display">Gold: <span id="gold-value">0</span></div>
+      <div id="environment-display"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <script src="constants.js"></script>
+  <script src="map.js"></script>
+  <script src="player.js"></script>
+  <script src="effects.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

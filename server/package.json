@@ -1,0 +1,16 @@
+{
+  "name": "treasure-hunt-server",
+  "version": "1.0.0",
+  "description": "Backend server for treasure hunting game",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "sql.js": "^1.8.0",
+    "cors": "^2.8.5"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "treasure-hunt-game",
+  "version": "1.0.0",
+  "description": "2D top-down treasure hunting game with adaptive banking integration",
+  "scripts": {
+    "start": "cd server && npm start",
+    "dev": "cd server && npm run dev",
+    "install-deps": "cd server && npm install"
+  },
+  "keywords": ["game", "treasure-hunt", "hackathon"],
+  "license": "MIT"
+}
