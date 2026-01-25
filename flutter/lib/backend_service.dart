@@ -197,7 +197,10 @@ class BackendService {
     }
   }
 
-  static Future<List<TransactionEntry>> getAccountTransactions(String accountId) async {
+  static Future<List<TransactionEntry>> getAccountTransactions(
+    String accountId, {
+    bool isLoan = false,
+  }) async {
     try {
       final response = await http.get(
         Uri.parse('$apiUrl/account/$accountId/transactions'),
@@ -206,7 +209,15 @@ class BackendService {
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         final intAccountId = int.tryParse(accountId);
-        return data.map((t) => TransactionEntry.fromJson(t, forAccountId: intAccountId)).toList();
+        return data
+            .map(
+              (t) => TransactionEntry.fromJson(
+                t,
+                forAccountId: intAccountId,
+                accountIsLoan: isLoan,
+              ),
+            )
+            .toList();
       }
       return [];
     } catch (e) {

@@ -40,6 +40,8 @@ class Game {
     // Socket connection
     this.socket = null;
     this.connected = false;
+    this.lastEnvironmentSentAt = 0;
+    this.environmentSendInterval = 400;
 
     // Initialize
     this.setupInput();
@@ -122,7 +124,7 @@ class Game {
     if (playerResult.hitObstacle) {
       this.player.removeGold(OBSTACLE_GOLD_PENALTY);
       this.updateGoldDisplay();
-      this.sendGoldUpdate(-OBSTACLE_GOLD_PENALTY);
+      this.sendGoldUpdate(-OBSTACLE_GOLD_PENALTY, 'rock');
       this.flashType = 'damage';
       this.flashTimer = 8;
 
@@ -137,7 +139,7 @@ class Game {
     if (treasureGold > 0) {
       this.player.addGold(treasureGold);
       this.updateGoldDisplay();
-      this.sendGoldUpdate(treasureGold);
+      this.sendGoldUpdate(treasureGold, 'treasure');
       this.flashType = 'gold';
       this.flashTimer = 8;
     }
@@ -393,18 +395,26 @@ class Game {
     `;
   }
 
-  sendGoldUpdate(change) {
+  sendGoldUpdate(change, reason) {
     if (this.connected && this.socket) {
       this.socket.emit('updateGold', {
         playerId: this.playerId,
         goldChange: change,
-        newTotal: this.player.gold
+        newTotal: this.player.gold,
+        reason: reason
       });
     }
   }
 
   sendEnvironmentUpdate(env) {
-    if (this.connected && this.socket) {
+    if (this.connected && this.socket && env) {
+      const now = (typeof performance !== 'undefined' && performance.now)
+        ? performance.now()
+        : Date.now();
+      if (now - this.lastEnvironmentSentAt < this.environmentSendInterval) {
+        return;
+      }
+      this.lastEnvironmentSentAt = now;
       this.socket.emit('environmentUpdate', {
         playerId: this.playerId,
         environment: env

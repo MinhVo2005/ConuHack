@@ -174,7 +174,11 @@ class TransactionEntry {
     this.toAccountId,
   });
 
-  factory TransactionEntry.fromJson(Map<String, dynamic> json, {int? forAccountId}) {
+  factory TransactionEntry.fromJson(
+    Map<String, dynamic> json, {
+    int? forAccountId,
+    bool accountIsLoan = false,
+  }) {
     final type = json['type'] ?? '';
     final fromId = json['from_account_id'] as int?;
     final toId = json['to_account_id'] as int?;
@@ -184,6 +188,9 @@ class TransactionEntry {
     if (forAccountId != null) {
       // If we know which account we're viewing, check if money left that account
       isDebit = fromId == forAccountId;
+      if (accountIsLoan) {
+        isDebit = !isDebit;
+      }
     } else {
       // Fallback: use transaction type
       isDebit = type == 'withdrawal' || type == 'transfer';

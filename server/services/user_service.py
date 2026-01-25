@@ -8,6 +8,7 @@ from models.account import Account
 DEFAULT_CHECKING_BALANCE = 1000
 DEFAULT_SAVINGS_BALANCE = 500
 DEFAULT_TREASURE_BALANCE = 0
+DEFAULT_CREDIT_CARD_BALANCE = 0
 
 
 class UserService:
@@ -45,7 +46,13 @@ class UserService:
                 type="treasure_chest",
                 name="Treasure Chest",
                 balance=DEFAULT_TREASURE_BALANCE
-            )
+            ),
+            Account(
+                user_id=user_id,
+                type="credit_card",
+                name="Credit Card",
+                balance=DEFAULT_CREDIT_CARD_BALANCE
+            ),
         ]
         for account in accounts:
             self.db.add(account)
@@ -72,8 +79,33 @@ class UserService:
         """Get existing user or create new one. Returns (user, created)."""
         user = self.db.query(User).filter(User.id == user_id).first()
         if user:
+            self._ensure_default_accounts(user)
             return user, False
         return self.create_user(user_id, name), True
+
+    def _ensure_default_accounts(self, user: User) -> None:
+        required_accounts = [
+            ("checking", "Checking Account", DEFAULT_CHECKING_BALANCE),
+            ("savings", "Savings Account", DEFAULT_SAVINGS_BALANCE),
+            ("treasure_chest", "Treasure Chest", DEFAULT_TREASURE_BALANCE),
+            ("credit_card", "Credit Card", DEFAULT_CREDIT_CARD_BALANCE),
+        ]
+        existing_types = {account.type for account in user.accounts}
+        created = False
+        for account_type, name, balance in required_accounts:
+            if account_type in existing_types:
+                continue
+            self.db.add(
+                Account(
+                    user_id=user.id,
+                    type=account_type,
+                    name=name,
+                    balance=balance
+                )
+            )
+            created = True
+        if created:
+            self.db.commit()
 
     def update_user_name(self, user_id: str, name: str) -> User:
         """Update user's name."""

@@ -55,6 +55,7 @@ connected_players = {}
 
 VALID_NOISE_LEVELS = {"quiet", "low", "med", "high", "boomboom"}
 DIRECT_DEPOSIT_AMOUNT = 50
+ROCK_HIT_CREDIT_CHARGE = 50
 
 
 def _coerce_number(value):
@@ -112,6 +113,17 @@ def _normalize_noise(noise, sound_level):
     if from_level is not None:
         return from_level
     return _noise_from_level(noise)
+
+
+def _should_apply_rock_charge(delta, data):
+    if delta >= 0:
+        return False
+    if not isinstance(data, dict):
+        return True
+    reason = data.get("reason")
+    if reason is None:
+        return True
+    return reason == "rock"
 
 
 def _extract_environment_payload(data):
@@ -462,6 +474,7 @@ async def updateGold(sid, data):
         delta = target_balance - current_balance
         deposit_account = None
         deposit_user_id = None
+        credit_card_account = None
         did_change = False
 
         if delta != 0:
@@ -491,11 +504,26 @@ async def updateGold(sid, data):
                 db.add(deposit_transaction)
                 did_change = True
 
+        if _should_apply_rock_charge(delta, data):
+            credit_card_account = account_service.get_account_by_type(player_id, "credit_card")
+            credit_card_account.balance += ROCK_HIT_CREDIT_CHARGE
+            charge_transaction = Transaction(
+                from_account_id=credit_card_account.id,
+                to_account_id=None,
+                amount=ROCK_HIT_CREDIT_CHARGE,
+                type="withdrawal",
+                description="Rock collision fee"
+            )
+            db.add(charge_transaction)
+            did_change = True
+
         if did_change:
             db.commit()
             db.refresh(treasure)
             if deposit_account:
                 db.refresh(deposit_account)
+            if credit_card_account:
+                db.refresh(credit_card_account)
         else:
             db.commit()
 

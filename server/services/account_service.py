@@ -83,6 +83,8 @@ class AccountService:
         for account in accounts:
             if account.type == "treasure_chest":
                 gold_bars = int(account.balance)
+            elif account.is_loan:
+                continue
             else:
                 total_cash += account.balance
 
