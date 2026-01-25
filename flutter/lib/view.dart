@@ -1,7 +1,10 @@
 // view.dart
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import 'api.dart';
 import 'models.dart';
@@ -11,717 +14,377 @@ class BankWorldApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'BankWorld MVP',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        // Keep app theme neutral; we apply dynamic theming per-screen.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+    final colors = BankColors.light();
+    return BankTheme(
+      colors: colors,
+      child: MaterialApp(
+        title: 'BankWorld MVP',
+        debugShowCheckedModeBanner: false,
+        theme: _buildTheme(colors),
+        home: const HomeAccountsPage(),
       ),
-      home: const ListAccountsPage(),
     );
   }
 }
 
-// -------------------- Dynamic UI computation --------------------
+ThemeData _buildTheme(BankColors colors) {
+  return ThemeData(
+    useMaterial3: true,
+    scaffoldBackgroundColor: colors.surface,
+    colorScheme: ColorScheme.light(
+      primary: colors.text,
+      onPrimary: colors.surface,
+      surface: colors.surface,
+      onSurface: colors.text,
+      outline: colors.divider,
+    ),
+    dividerColor: colors.divider,
+    iconTheme: IconThemeData(color: colors.text),
+    textTheme: Typography.material2021().black.apply(
+          bodyColor: colors.text,
+          displayColor: colors.text,
+        ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: colors.surface,
+      hintStyle: TextStyle(color: colors.textMuted),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: colors.divider),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: colors.divider),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: colors.text, width: 1.5),
+      ),
+    ),
+  );
+}
 
-class WorldUi {
-  final Color surface;
-  final Color surfaceMuted;
-  final Color outline;
-  final Color outlineStrong;
+class BankColors {
   final Color text;
   final Color textMuted;
-  final Color pillBg;
-  final Color pillFg;
+  final Color surface;
+  final Color surfaceMuted;
   final Color divider;
-  final Color scrimColor;
-  final double scrimOpacity;
+  final Color shadow;
+  final Color headerScrimTop;
+  final Color headerScrimBottom;
+  final Color actionFill;
 
-  final ThemeData theme;
-
-  const WorldUi({
-    required this.surface,
-    required this.surfaceMuted,
-    required this.outline,
-    required this.outlineStrong,
+  const BankColors({
     required this.text,
     required this.textMuted,
-    required this.pillBg,
-    required this.pillFg,
+    required this.surface,
+    required this.surfaceMuted,
     required this.divider,
-    required this.scrimColor,
-    required this.scrimOpacity,
-    required this.theme,
+    required this.shadow,
+    required this.headerScrimTop,
+    required this.headerScrimBottom,
+    required this.actionFill,
   });
 
-  static double _clamp01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
-
-  static Color _on(Color bg) =>
-      bg.computeLuminance() > 0.5 ? Colors.black : Colors.white;
-
-  static double _lerp(double a, double b, double t) => a + (b - a) * t;
-
-  /// Replace this with your exact "formula" if you already have one.
-  static WorldUi fromStatus(_WorldStatus? s) {
-    // Safe defaults while loading.
-    final region = s?.region ?? Region.darkCave;
-    final temp = s?.weather.temperature ?? 0;
-    final hum = s?.weather.humidity ?? 50;
-    final wind = s?.weather.windSpeed ?? 10;
-    final brightness = (s?.brightness ?? 6).clamp(1, 10);
-
-    // Normalize inputs.
-    final tN = _clamp01((temp + 30) / 80); // -30..50 => 0..1
-    final hN = _clamp01(hum / 100.0); // 0..100 => 0..1
-    final wN = _clamp01(wind / 60.0); // 0..60+ => 0..1
-    final bN = _clamp01((brightness - 1) / 9.0); // 1..10 => 0..1
-
-    // "Climate hue": cold->blue, hot->orange/red, humidity shifts toward green.
-    final hue = (220.0 * (1 - tN)) + (25.0 * tN) + (20.0 * (hN - 0.5));
-    final sat = _clamp01(_lerp(0.45, 0.85, (0.55 * hN + 0.45 * (1 - wN))));
-    final light = _clamp01(_lerp(0.28, 0.80, bN));
-
-    final accent = HSLColor.fromAHSL(1, hue % 360, sat, _clamp01(light * 0.9))
-        .toColor();
-
-    // Readable surfaces (slightly tinted) and outlines.
-    final surface =
-        HSLColor.fromAHSL(1, hue % 360, 0.12, _clamp01(_lerp(0.18, 0.92, bN)))
-            .toColor()
-            .withOpacity(0.86);
-
-    final surfaceMuted =
-        HSLColor.fromAHSL(1, hue % 360, 0.08, _clamp01(_lerp(0.14, 0.88, bN)))
-            .toColor()
-            .withOpacity(0.76);
-
-    // Outline uses accent but adjusted for contrast vs surface.
-    final outlineBase = HSLColor.fromColor(accent);
-    final outline = outlineBase
-        .withSaturation(_clamp01(outlineBase.saturation * 0.65))
-        .withLightness(
-            _clamp01(surface.computeLuminance() > 0.5 ? 0.18 : 0.85))
-        .toColor()
-        .withOpacity(0.85);
-
-    final outlineStrong = _on(surface).withOpacity(0.95);
-    final text = _on(surface);
-    final textMuted = text.withOpacity(0.78);
-
-    // Pill buttons: filled and high-contrast.
-    final pillBg = HSLColor.fromColor(accent)
-        .withLightness(
-            _clamp01(surface.computeLuminance() > 0.5 ? 0.40 : 0.62))
-        .toColor();
-    final pillFg = _on(pillBg);
-
-    // Scrim: pushes background toward a readable mid-range.
-    final bgB = region.bgBrightnessHint;
-    final targetBg = _lerp(0.38, 0.62, bN); // ambient light affects how hard we scrub
-    final delta = (bgB - targetBg);
-    final scrimColor = delta > 0 ? Colors.black : Colors.white;
-    final scrimOpacity = _clamp01((delta.abs() * 0.55) + 0.08);
-
-    final divider = outlineStrong.withOpacity(0.85);
-
-    final theme = ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: accent,
-        brightness:
-            surface.computeLuminance() > 0.5 ? Brightness.light : Brightness.dark,
-      ),
-      scaffoldBackgroundColor: Colors.transparent,
-      textTheme: Typography.material2021().black.apply(
-        bodyColor: text,
-        displayColor: text,
-      ),
+  factory BankColors.light() {
+    return const BankColors(
+      text: Colors.black,
+      textMuted: Color(0xFF4A4A4A),
+      surface: Colors.white,
+      surfaceMuted: Color(0xFFF6F6F6),
+      divider: Color(0xFFE4E4E4),
+      shadow: Color(0x14000000),
+      headerScrimTop: Color(0xE6FFFFFF),
+      headerScrimBottom: Color(0x99FFFFFF),
+      actionFill: Color(0xFFF2F2F2),
     );
+  }
 
-    return WorldUi(
-      surface: surface,
-      surfaceMuted: surfaceMuted,
-      outline: outline,
-      outlineStrong: outlineStrong,
-      text: text,
-      textMuted: textMuted,
-      pillBg: pillBg,
-      pillFg: pillFg,
-      divider: divider,
-      scrimColor: scrimColor,
-      scrimOpacity: scrimOpacity,
-      theme: theme,
+  factory BankColors.forRegion(Region region) {
+    switch (region) {
+      case Region.arcticSnows:
+        return const BankColors(
+          text: Color(0xFF0E2A3A),
+          textMuted: Color(0xFF416679),
+          surface: Color(0xFFF7FBFF),
+          surfaceMuted: Color(0xFFE5F2FA),
+          divider: Color(0xFFCFE0EA),
+          shadow: Color(0x140B2230),
+          headerScrimTop: Color(0xE6F2F8FF),
+          headerScrimBottom: Color(0x99E3F1FB),
+          actionFill: Color(0xFFD7ECF7),
+        );
+      case Region.rainforest:
+        return const BankColors(
+          text: Color(0xFF1A2F22),
+          textMuted: Color(0xFF3C5A46),
+          surface: Color(0xFFF1F7F2),
+          surfaceMuted: Color(0xFFE0EDE2),
+          divider: Color(0xFFC6D9CA),
+          shadow: Color(0x1A102219),
+          headerScrimTop: Color(0xE6EAF4EC),
+          headerScrimBottom: Color(0x99D2E3D5),
+          actionFill: Color(0xFFD6E7DA),
+        );
+      case Region.windyPlains:
+        return const BankColors(
+          text: Color(0xFF1E2A39),
+          textMuted: Color(0xFF4A6175),
+          surface: Color(0xFFF3F7FB),
+          surfaceMuted: Color(0xFFE1ECF5),
+          divider: Color(0xFFC7D8E6),
+          shadow: Color(0x160F2230),
+          headerScrimTop: Color(0xE6F6FAFF),
+          headerScrimBottom: Color(0x99DDE9F5),
+          actionFill: Color(0xFFD7E6F2),
+        );
+      case Region.dryBeach:
+        return const BankColors(
+          text: Color(0xFF3A2A12),
+          textMuted: Color(0xFF6C4E2E),
+          surface: Color(0xFFFFF3E0),
+          surfaceMuted: Color(0xFFF5E2C8),
+          divider: Color(0xFFE6D0B0),
+          shadow: Color(0x1A3A2A12),
+          headerScrimTop: Color(0xE6FFF7EA),
+          headerScrimBottom: Color(0x99F5E0C7),
+          actionFill: Color(0xFFF4E0BD),
+        );
+      case Region.loudJungle:
+        return const BankColors(
+          text: Color(0xFF1B2E1E),
+          textMuted: Color(0xFF3E5C42),
+          surface: Color(0xFFF2F7F2),
+          surfaceMuted: Color(0xFFE0EDE3),
+          divider: Color(0xFFC8D9CC),
+          shadow: Color(0x1A122418),
+          headerScrimTop: Color(0xE6EEF6EF),
+          headerScrimBottom: Color(0x99D7E6DA),
+          actionFill: Color(0xFFDAE8DE),
+        );
+      case Region.darkCave:
+        return const BankColors(
+          text: Color(0xFF1A1F2A),
+          textMuted: Color(0xFF4A5666),
+          surface: Color(0xFFF0F3F8),
+          surfaceMuted: Color(0xFFE1E7F0),
+          divider: Color(0xFFC7D2E0),
+          shadow: Color(0x1A0F1218),
+          headerScrimTop: Color(0xE6F4F6FA),
+          headerScrimBottom: Color(0x99D5DDE8),
+          actionFill: Color(0xFFDCE4EF),
+        );
+    }
+  }
+
+  static const Color _coldTint = Color(0xFF78C6FF);
+  static const Color _warmTint = Color(0xFFFFB05A);
+  static const Color _dryTint = Color(0xFFE0C28C);
+  static const Color _humidTint = Color(0xFF6FC9A2);
+
+  factory BankColors.forEnvironment({
+    required Region region,
+    int? temperature,
+    int? humidity,
+    int? brightness,
+  }) {
+    final base = BankColors.forRegion(region);
+    final tempT = temperature == null
+        ? 0.5
+        : _normalize(temperature.toDouble(), -10, 38);
+    final humidityT = humidity == null
+        ? 0.5
+        : _normalize(humidity.toDouble(), 20, 90);
+
+    final tempTint = Color.lerp(_coldTint, _warmTint, tempT)!;
+    final humidityTint = Color.lerp(_dryTint, _humidTint, humidityT)!;
+
+    final tempExt = (tempT - 0.5).abs() * 2;
+    final humidityExt = (humidityT - 0.5).abs() * 2;
+
+    var tempWeight = temperature == null
+        ? 0.0
+        : (0.25 + 0.45 * tempExt) * _regionTempWeight(region);
+    var humidityWeight = humidity == null
+        ? 0.0
+        : (0.2 + 0.4 * humidityExt) * _regionHumidityWeight(region);
+    tempWeight = tempWeight.clamp(0.0, 0.65).toDouble();
+    humidityWeight = humidityWeight.clamp(0.0, 0.65).toDouble();
+
+    Color blend(Color color, double strength) {
+      var out = Color.lerp(color, tempTint, strength * tempWeight)!;
+      out = Color.lerp(out, humidityTint, strength * humidityWeight)!;
+      return out;
+    }
+
+    final brightnessT = brightness == null
+        ? 0.5
+        : _normalize(brightness.toDouble(), 1, 10);
+    final brighten = brightnessT >= 0.5;
+    final brightnessStrength = (brightnessT - 0.5).abs() * 2;
+    final brightnessWeight = (0.12 + 0.38 * brightnessStrength)
+        .clamp(0.12, 0.5)
+        .toDouble();
+
+    Color applyBrightness(Color color,
+        {double strength = 1, bool forText = false}) {
+      if (brightnessT == 0.5) return color;
+      final target = brighten ? Colors.white : Colors.black;
+      final textScale = forText ? 0.5 : 1.0;
+      final weight = brightnessWeight * strength * textScale;
+      return Color.lerp(color, target, weight) ?? color;
+    }
+
+    return BankColors(
+      text: applyBrightness(blend(base.text, 0.18),
+          strength: 0.5, forText: true),
+      textMuted: applyBrightness(blend(base.textMuted, 0.26),
+          strength: 0.6, forText: true),
+      surface: applyBrightness(blend(base.surface, 0.7)),
+      surfaceMuted: applyBrightness(blend(base.surfaceMuted, 0.75)),
+      divider: applyBrightness(blend(base.divider, 0.48), strength: 0.7),
+      shadow: base.shadow,
+      headerScrimTop: applyBrightness(blend(base.headerScrimTop, 0.65),
+          strength: 0.9),
+      headerScrimBottom: applyBrightness(blend(base.headerScrimBottom, 0.65),
+          strength: 0.9),
+      actionFill: applyBrightness(blend(base.actionFill, 0.75)),
     );
+  }
+
+  static double _normalize(double value, double min, double max) {
+    if (max - min == 0) return 0.5;
+    return ((value - min) / (max - min)).clamp(0.0, 1.0).toDouble();
+  }
+
+  static double _regionTempWeight(Region region) {
+    switch (region) {
+      case Region.dryBeach:
+        return 1.2;
+      case Region.rainforest:
+        return 0.9;
+      case Region.windyPlains:
+        return 1.0;
+      case Region.arcticSnows:
+        return 1.3;
+      case Region.loudJungle:
+        return 1.0;
+      case Region.darkCave:
+        return 0.8;
+    }
+  }
+
+  static double _regionHumidityWeight(Region region) {
+    switch (region) {
+      case Region.dryBeach:
+        return 0.7;
+      case Region.rainforest:
+        return 1.3;
+      case Region.windyPlains:
+        return 0.9;
+      case Region.arcticSnows:
+        return 0.8;
+      case Region.loudJungle:
+        return 1.1;
+      case Region.darkCave:
+        return 0.8;
+    }
   }
 }
 
-class WorldTheme extends InheritedWidget {
-  final WorldUi ui;
+class BankTheme extends InheritedWidget {
+  final BankColors colors;
 
-  const WorldTheme({
+  const BankTheme({
     super.key,
-    required this.ui,
+    required this.colors,
     required super.child,
   });
 
-  static WorldUi of(BuildContext context) {
-    final w = context.dependOnInheritedWidgetOfExactType<WorldTheme>();
-    // If you ever render a widget outside this scope, fall back to defaults.
-    return w?.ui ?? WorldUi.fromStatus(null);
+  static BankColors of(BuildContext context) {
+    final theme = context.dependOnInheritedWidgetOfExactType<BankTheme>();
+    return theme?.colors ?? BankColors.light();
   }
 
   @override
-  bool updateShouldNotify(WorldTheme oldWidget) => oldWidget.ui != ui;
+  bool updateShouldNotify(BankTheme oldWidget) => colors != oldWidget.colors;
 }
 
-// -------------------- UI --------------------
+class BankEffects extends InheritedWidget {
+  final Environment? environment;
+  final double windIntensity;
+  final double shakeIntensity;
 
-class ListAccountsPage extends StatefulWidget {
-  const ListAccountsPage({super.key});
+  const BankEffects({
+    super.key,
+    required this.environment,
+    required this.windIntensity,
+    required this.shakeIntensity,
+    required super.child,
+  });
 
-  @override
-  State<ListAccountsPage> createState() => _ListAccountsPageState();
-}
-
-class _ListAccountsPageState extends State<ListAccountsPage> {
-  late final Future<User> _userFuture;
-
-  // "Dynamic UI": left panel slides in/out, and only opens when you tap an account.
-  bool _leftPanelOpen = false;
-  Account? _selectedAccount;
-
-  final ValueNotifier<_WorldStatus?> _world = ValueNotifier<_WorldStatus?>(null);
-  Timer? _pollTimer;
-  bool _fetchingWorld = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _userFuture = Api.fetchUser();
-    _refreshWorld(); // initial
-    _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _refreshWorld());
+  static BankEffects? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<BankEffects>();
   }
 
   @override
-  void dispose() {
-    _pollTimer?.cancel();
-    _world.dispose();
-    super.dispose();
-  }
-
-  Future<void> _refreshWorld() async {
-    if (_fetchingWorld) return;
-    _fetchingWorld = true;
-    try {
-      final ws = await _loadWorldStatus();
-      if (_world.value != ws) {
-        _world.value = ws;
-      }
-    } finally {
-      _fetchingWorld = false;
-    }
-  }
-
-  Future<_WorldStatus> _loadWorldStatus() async {
-    // Server ping: ask for all info (concurrently).
-    final results = await Future.wait([
-      Api.fetchRegion(),
-      Api.fetchWeather(),
-      Api.fetchNoise(),
-      Api.fetchBrightness(),
-      Api.fetchLocation(),
-      Api.fetchDistanceToNearestTreasure(),
-    ]);
-
-    return _WorldStatus(
-      region: results[0] as Region,
-      weather: results[1] as Weather,
-      noise: results[2] as NoiseLevel,
-      brightness: results[3] as int,
-      location: results[4] as WorldLocation,
-      treasureDist: results[5] as DistanceToTreasure,
-    );
-  }
-
-  void _onAccountTapped(Account a) {
-    setState(() {
-      _selectedAccount = a;
-      _leftPanelOpen = true;
-    });
-  }
-
-  void _closeLeftPanel() {
-    if (!_leftPanelOpen) return;
-    setState(() => _leftPanelOpen = false);
-  }
-
-  void _noopAction(String label) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$label (not wired yet)'),
-        duration: const Duration(milliseconds: 900),
-      ),
-    );
-  }
-
-  void _openDebugMenu() {
-    final base = _world.value;
-    _showDebugSheet(
-      context: context,
-      current: base,
-      onApply: (patch) {
-        // Apply overrides (these change what Api.* returns).
-        Api.debug.region = patch.region;
-        Api.debug.temperature = patch.temperature;
-        Api.debug.humidity = patch.humidity;
-        Api.debug.windSpeed = patch.windSpeed;
-        Api.debug.noise = patch.noise;
-        Api.debug.brightness = patch.brightness;
-        Api.debug.location = patch.location;
-        Api.debug.treasureDist = patch.treasureDist;
-        _refreshWorld();
-      },
-      onClear: () {
-        Api.debug.clear();
-        _refreshWorld();
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<_WorldStatus?>(
-      valueListenable: _world,
-      builder: (context, ws, _) {
-        final uiState = WorldUi.fromStatus(ws);
-
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final isCompact = constraints.maxWidth < 720;
-            final screenH = MediaQuery.of(context).size.height;
-            final compactPanelH = (screenH * 0.34).clamp(220.0, 300.0);
-
-            return WorldTheme(
-              ui: uiState,
-              child: AnimatedTheme(
-                data: uiState.theme,
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOut,
-                child: Scaffold(
-                  backgroundColor: Colors.transparent,
-                  body: Stack(
-                    children: [
-                      _WorldBackground(region: ws?.region ?? Region.darkCave),
-                      // Ambient-light scrim (day/night, too bright/too dark)
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOut,
-                            color: uiState.scrimColor.withOpacity(uiState.scrimOpacity),
-                          ),
-                        ),
-                      ),
-                      SafeArea(
-                        child: FutureBuilder<User>(
-                          future: _userFuture,
-                          builder: (context, snap) {
-                            final user = snap.data;
-
-                            return Column(
-                              children: [
-                                _TopBar(
-                                  compact: isCompact,
-                                  onHamburgerPressed: _closeLeftPanel,
-                                  onHatPressed: () => _noopAction('Profile'),
-                                  onETransfer: () => _noopAction('E-Transfer'),
-                                  onTransfer: () => _noopAction('Transfer'),
-                                  onPayBills: () => _noopAction('Pay Bills'),
-                                  onMore: () => _noopAction('More'),
-                                  onDebug: _openDebugMenu,
-                                  debugActive: Api.debug.anyEnabled,
-                                ),
-                                const _ThickDivider(),
-                                Expanded(
-                                  child: isCompact
-                                      ? Stack(
-                                          children: [
-                                            AnimatedPadding(
-                                              duration: const Duration(milliseconds: 220),
-                                              curve: Curves.easeOut,
-                                              padding: EdgeInsets.fromLTRB(
-                                                14,
-                                                14,
-                                                14,
-                                                _leftPanelOpen
-                                                    ? compactPanelH + 18
-                                                    : 12,
-                                              ),
-                                              child: _AccountsList(
-                                                user: user,
-                                                isLoading: snap.connectionState !=
-                                                    ConnectionState.done,
-                                                onAccountTap: _onAccountTapped,
-                                              ),
-                                            ),
-                                            _SlideUpPanel(
-                                              isOpen: _leftPanelOpen,
-                                              height: compactPanelH,
-                                              onClose: _closeLeftPanel,
-                                              onSettings: () => _noopAction('Settings'),
-                                              selectedAccount: _selectedAccount,
-                                            ),
-                                          ],
-                                        )
-                                      : Row(
-                                          children: [
-                                            _SlidingLeftPanel(
-                                              isOpen: _leftPanelOpen,
-                                              onSettings: () => _noopAction('Settings'),
-                                              selectedAccount: _selectedAccount,
-                                            ),
-                                            const _VerticalDividerLine(),
-                                            Expanded(
-                                              child: Padding(
-                                                padding:
-                                                    const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                                                child: _AccountsList(
-                                                  user: user,
-                                                  isLoading:
-                                                      snap.connectionState !=
-                                                          ConnectionState.done,
-                                                  onAccountTap: _onAccountTapped,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                ),
-                                _BottomWeatherBar(
-                                  compact: isCompact,
-                                  status: ws,
-                                  isLoading: ws == null,
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
+  bool updateShouldNotify(covariant BankEffects oldWidget) {
+    return environment != oldWidget.environment ||
+        windIntensity != oldWidget.windIntensity ||
+        shakeIntensity != oldWidget.shakeIntensity;
   }
 }
 
-class _WorldStatus {
-  final Region region;
-  final Weather weather;
-  final NoiseLevel noise;
-  final int brightness;
-  final WorldLocation location;
-  final DistanceToTreasure treasureDist;
+double _headerHeight(BuildContext context, double fraction,
+    {double min = 200, double max = 320}) {
+  final height = MediaQuery.of(context).size.height * fraction;
+  return height.clamp(min, max);
+}
 
-  const _WorldStatus({
+String _formatBalance(int amount) => '\$$amount CAD';
+String _formatAmount(int amount) => '\$$amount';
+
+class RegionHeader extends StatelessWidget {
+  final Region? region;
+  final double height;
+  final Widget child;
+
+  const RegionHeader({
+    super.key,
     required this.region,
-    required this.weather,
-    required this.noise,
-    required this.brightness,
-    required this.location,
-    required this.treasureDist,
-  });
-
-  @override
-  bool operator ==(Object other) {
-    return other is _WorldStatus &&
-        other.region == region &&
-        other.noise == noise &&
-        other.brightness == brightness &&
-        other.weather.temperature == weather.temperature &&
-        other.weather.humidity == weather.humidity &&
-        other.weather.windSpeed == weather.windSpeed &&
-        other.location.x == location.x &&
-        other.location.y == location.y &&
-        other.treasureDist.dx == treasureDist.dx &&
-        other.treasureDist.dy == treasureDist.dy;
-  }
-
-  @override
-  int get hashCode => Object.hash(
-        region,
-        noise,
-        brightness,
-        weather.temperature,
-        weather.humidity,
-        weather.windSpeed,
-        location.x,
-        location.y,
-        treasureDist.dx,
-        treasureDist.dy,
-      );
-}
-
-// -------------------- Background --------------------
-
-class _WorldBackground extends StatelessWidget {
-  final Region region;
-  const _WorldBackground({required this.region});
-
-  @override
-  Widget build(BuildContext context) {
-    // Fade between region backgrounds when region changes.
-    return Positioned.fill(
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 350),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: _RegionBgImage(
-          key: ValueKey(region),
-          region: region,
-        ),
-      ),
-    );
-  }
-}
-
-class _RegionBgImage extends StatelessWidget {
-  final Region region;
-  const _RegionBgImage({super.key, required this.region});
-
-  @override
-  Widget build(BuildContext context) {
-    // Uses Image.asset with errorBuilder so missing assets don't crash the app.
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        ColorFiltered(
-          colorFilter: const ColorFilter.matrix([
-            1.1, 0.0, 0.0, 0.0, 0.0,
-            0.0, 1.1, 0.0, 0.0, 0.0,
-            0.0, 0.0, 1.1, 0.0, 0.0,
-            0.0, 0.0, 0.0, 1.0, 0.0,
-          ]),
-          child: Image.asset(
-            region.assetPath,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) {
-              // Fallback if assets aren't added yet.
-              return DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.black.withOpacity(0.25),
-                      Colors.white.withOpacity(0.05),
-                    ],
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    'Missing asset:\n${region.assetPath}\n\nAdd it to pubspec.yaml',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        // A subtle vignette to help readability regardless of image.
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              radius: 1.2,
-              colors: [Colors.transparent, Colors.black38],
-              stops: [0.55, 1.0],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// -------------------- Widgets --------------------
-
-class _TopBar extends StatelessWidget {
-  final bool compact;
-  final VoidCallback onHamburgerPressed;
-  final VoidCallback onHatPressed;
-  final VoidCallback onETransfer;
-  final VoidCallback onTransfer;
-  final VoidCallback onPayBills;
-  final VoidCallback onMore;
-
-  final VoidCallback onDebug;
-  final bool debugActive;
-
-  const _TopBar({
-    required this.compact,
-    required this.onHamburgerPressed,
-    required this.onHatPressed,
-    required this.onETransfer,
-    required this.onTransfer,
-    required this.onPayBills,
-    required this.onMore,
-    required this.onDebug,
-    required this.debugActive,
+    required this.height,
+    required this.child,
   });
 
   @override
   Widget build(BuildContext context) {
-    final ui = WorldTheme.of(context);
+    final colors = BankTheme.of(context);
+    final safeRegion = region ?? Region.darkCave;
 
-    if (compact) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                IconButton(
-                  onPressed: onHamburgerPressed,
-                  icon: const Icon(Icons.menu_rounded),
-                  tooltip: 'Close panel',
-                  color: ui.text,
-                ),
-                IconButton(
-                  onPressed: onHatPressed,
-                  icon: const Icon(Icons.account_circle_rounded),
-                  tooltip: 'Profile',
-                  color: ui.text,
-                ),
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      'BankWorld',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: ui.text,
-                      ),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: onDebug,
-                  tooltip: debugActive ? 'Debug (overrides active)' : 'Debug',
-                  icon: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      const Icon(Icons.bug_report_rounded),
-                      if (debugActive)
-                        Positioned(
-                          right: -2,
-                          top: -2,
-                          child: Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: Colors.redAccent,
-                              borderRadius: BorderRadius.circular(99),
-                              border: Border.all(color: Colors.white, width: 1.5),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  color: ui.text,
-                ),
-                IconButton(
-                  onPressed: onMore,
-                  tooltip: 'More',
-                  icon: const Icon(Icons.more_horiz_rounded),
-                  color: ui.text,
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _PillButton(label: 'E-Transfer', onPressed: onETransfer),
-                  const SizedBox(width: 10),
-                  _PillButton(label: 'Transfer', onPressed: onTransfer),
-                  const SizedBox(width: 10),
-                  _PillButton(label: 'Pay Bills', onPressed: onPayBills),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      child: Row(
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          IconButton(
-            onPressed: onHamburgerPressed,
-            icon: const Icon(Icons.menu_rounded),
-            tooltip: 'Close left panel',
-            color: ui.text,
-          ),
-          IconButton(
-            onPressed: onHatPressed,
-            icon: const Icon(Icons.account_circle_rounded),
-            tooltip: 'Profile',
-            color: ui.text,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Center(
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                alignment: WrapAlignment.center,
-                children: [
-                  _PillButton(label: 'E-Transfer', onPressed: onETransfer),
-                  _PillButton(label: 'Transfer', onPressed: onTransfer),
-                  _PillButton(label: 'Pay Bills', onPressed: onPayBills),
-                ],
+          _RegionBackground(region: safeRegion),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [colors.headerScrimTop, colors.headerScrimBottom],
               ),
             ),
           ),
-          IconButton(
-            onPressed: onDebug,
-            tooltip: debugActive ? 'Debug (overrides active)' : 'Debug',
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.bug_report_rounded),
-                if (debugActive)
-                  Positioned(
-                    right: -2,
-                    top: -2,
-                    child: Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent,
-                        borderRadius: BorderRadius.circular(99),
-                        border: Border.all(color: Colors.white, width: 1.5),
-                      ),
-                    ),
-                  ),
-              ],
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: child,
             ),
-            color: ui.text,
-          ),
-          TextButton(
-            onPressed: onMore,
-            style: TextButton.styleFrom(foregroundColor: ui.text),
-            child: const Text('>>'),
           ),
         ],
       ),
@@ -729,361 +392,676 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _ThickDivider extends StatelessWidget {
-  const _ThickDivider();
+class _RegionBackground extends StatelessWidget {
+  final Region region;
+
+  const _RegionBackground({required this.region});
 
   @override
   Widget build(BuildContext context) {
-    final ui = WorldTheme.of(context);
-    return Container(height: 2, color: ui.divider);
+    final colors = BankTheme.of(context);
+    return Image.asset(
+      region.assetPath,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) {
+        return Container(color: colors.surfaceMuted);
+      },
+    );
   }
 }
 
-class _VerticalDividerLine extends StatelessWidget {
-  const _VerticalDividerLine();
+enum _WeatherType { none, snow, rain, wind }
 
-  @override
-  Widget build(BuildContext context) {
-    final ui = WorldTheme.of(context);
-    return Container(width: 2, color: ui.divider);
+_WeatherType _weatherForRegion(Region region) {
+  switch (region) {
+    case Region.arcticSnows:
+      return _WeatherType.snow;
+    case Region.rainforest:
+      return _WeatherType.rain;
+    case Region.windyPlains:
+      return _WeatherType.wind;
+    case Region.dryBeach:
+    case Region.darkCave:
+    case Region.loudJungle:
+      return _WeatherType.none;
   }
 }
 
-class _SlidingLeftPanel extends StatelessWidget {
-  final bool isOpen;
-  final VoidCallback onSettings;
-  final Account? selectedAccount;
+class _WeatherPalette {
+  final Color highlight;
+  final Color accent;
 
-  const _SlidingLeftPanel({
-    required this.isOpen,
-    required this.onSettings,
-    required this.selectedAccount,
+  const _WeatherPalette({
+    required this.highlight,
+    required this.accent,
+  });
+}
+
+_WeatherPalette _weatherPalette(Region region, BankColors colors) {
+  switch (region) {
+    case Region.arcticSnows:
+      return const _WeatherPalette(
+        highlight: Color(0xFFFDFEFF),
+        accent: Color(0xFFBFDFF5),
+      );
+    case Region.rainforest:
+      return const _WeatherPalette(
+        highlight: Color(0xFF9FC3E3),
+        accent: Color(0xFF6F96BD),
+      );
+    case Region.windyPlains:
+      return const _WeatherPalette(
+        highlight: Color(0xFFD5E4F3),
+        accent: Color(0xFF9AB8D4),
+      );
+    case Region.dryBeach:
+    case Region.darkCave:
+    case Region.loudJungle:
+      return _WeatherPalette(
+        highlight: colors.surface,
+        accent: colors.surfaceMuted,
+      );
+  }
+}
+
+class NoiseShake extends StatefulWidget {
+  final double intensity;
+  final Widget child;
+
+  const NoiseShake({
+    super.key,
+    required this.intensity,
+    required this.child,
   });
 
   @override
+  State<NoiseShake> createState() => _NoiseShakeState();
+}
+
+class _NoiseShakeState extends State<NoiseShake> with SingleTickerProviderStateMixin {
+  final math.Random _random = math.Random();
+  late final Ticker _ticker;
+  Offset _offset = Offset.zero;
+  Duration _lastElapsed = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker(_onTick)..start();
+  }
+
+  void _onTick(Duration elapsed) {
+    final intensity = widget.intensity;
+    if (intensity <= 0) {
+      if (_offset != Offset.zero) {
+        setState(() => _offset = Offset.zero);
+      }
+      _lastElapsed = elapsed;
+      return;
+    }
+
+    if (elapsed - _lastElapsed < const Duration(milliseconds: 40)) {
+      return;
+    }
+    _lastElapsed = elapsed;
+
+    final maxOffset = 6.0 * intensity;
+    final dx = (_random.nextDouble() * 2 - 1) * maxOffset;
+    final dy = (_random.nextDouble() * 2 - 1) * maxOffset;
+    setState(() => _offset = Offset(dx, dy));
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final ui = WorldTheme.of(context);
+    return Transform.translate(
+      offset: _offset,
+      child: widget.child,
+    );
+  }
+}
 
-    final screenW = MediaQuery.of(context).size.width;
-    final panelW = (screenW * 0.33).clamp(220.0, 320.0);
+class WindFloat extends StatefulWidget {
+  final double intensity;
+  final Widget child;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-      width: isOpen ? panelW : 0,
-      child: ClipRect(
-        child: Align(
-          alignment: Alignment.centerLeft,
-          widthFactor: isOpen ? 1 : 0,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: ui.surfaceMuted,
-                    border: Border.all(color: ui.outline, width: 3),
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: ui.outline.withOpacity(0.2),
-                        blurRadius: 14,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: const [
-                      _SketchBlankBox(height: 72),
-                      SizedBox(height: 12),
-                      _SketchBlankBox(height: 86),
-                      SizedBox(height: 12),
-                      _SketchBlankBox(height: 86),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: Text(
-                    'Treasure\nHunt',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      height: 1.1,
-                      color: ui.text,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _PillButton(
-                  label: 'Settings',
-                  onPressed: onSettings,
-                  big: true,
-                ),
-              ],
-            ),
+  const WindFloat({
+    super.key,
+    required this.intensity,
+    required this.child,
+  });
+
+  @override
+  State<WindFloat> createState() => _WindFloatState();
+}
+
+class _WindFloatState extends State<WindFloat> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final double _phase;
+  late final double _tilt;
+  late final double _drift;
+
+  @override
+  void initState() {
+    super.initState();
+    final random = math.Random();
+    _phase = random.nextDouble() * math.pi * 2;
+    _tilt = (random.nextDouble() * 0.03) - 0.015;
+    _drift = 0.6 + random.nextDouble() * 0.6;
+    _controller = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 3200 + random.nextInt(1800)),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final intensity = widget.intensity;
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder: (context, child) {
+        final t = (_controller.value * math.pi * 2 * _drift) + _phase;
+        final amplitude = 12.0 * intensity;
+        final dx = math.sin(t) * amplitude * 0.7;
+        final dy = math.cos(t * 0.9) * amplitude;
+        final angle = math.sin(t * 0.7) * _tilt * intensity;
+        return Transform.translate(
+          offset: Offset(dx, dy),
+          child: Transform.rotate(
+            angle: angle,
+            child: child,
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
-class _AccountsList extends StatelessWidget {
-  final User? user;
-  final bool isLoading;
-  final void Function(Account) onAccountTap;
+class ButtonMotion extends StatelessWidget {
+  final Widget child;
+  final bool enabled;
+  final bool applyNoise;
+  final bool applyWind;
 
-  const _AccountsList({
-    required this.user,
-    required this.isLoading,
-    required this.onAccountTap,
+  const ButtonMotion({
+    super.key,
+    required this.child,
+    this.enabled = true,
+    this.applyNoise = true,
+    this.applyWind = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final accounts = user?.accounts ?? const <Account>[];
+    if (!enabled) return child;
+    final effects = BankEffects.maybeOf(context);
+    if (effects == null) return child;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : ListView.separated(
-                  itemCount: accounts.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 14),
-                  itemBuilder: (context, i) {
-                    final a = accounts[i];
-                    return _SketchAccountRow(
-                      account: a,
-                      onTap: () => onAccountTap(a),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
+    final windIntensity = effects.windIntensity;
+    final shakeIntensity = effects.shakeIntensity;
+
+    Widget current = child;
+    if (applyWind && windIntensity > 0) {
+      current = WindFloat(intensity: windIntensity, child: current);
+    }
+    if (applyNoise && shakeIntensity > 0) {
+      current = NoiseShake(intensity: shakeIntensity, child: current);
+    }
+    return current;
   }
 }
 
-class _SketchAccountRow extends StatelessWidget {
-  final Account account;
-  final VoidCallback onTap;
+class WeatherOverlay extends StatefulWidget {
+  final _WeatherType type;
+  final int windSpeed;
+  final Color highlight;
+  final Color accent;
 
-  const _SketchAccountRow({
-    required this.account,
-    required this.onTap,
+  const WeatherOverlay({
+    super.key,
+    required this.type,
+    required this.windSpeed,
+    required this.highlight,
+    required this.accent,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final ui = WorldTheme.of(context);
-    final lastTx =
-        account.transactionHistory.isNotEmpty ? account.transactionHistory.first : null;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          color: ui.surface,
-          border: Border.all(color: ui.outlineStrong, width: 2.5),
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: ui.outline.withOpacity(0.18),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: DefaultTextStyle(
-                style: TextStyle(color: ui.text),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      account.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'ID: ${account.id}',
-                      style: TextStyle(fontSize: 12, color: ui.textMuted),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Balance: \$${account.balance}',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                    ),
-                    if (lastTx != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        'Last tx: ${lastTx.fromAccId} → ${lastTx.toAccId}  (\$${lastTx.dollar})',
-                        style: TextStyle(fontSize: 12, color: ui.textMuted),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Icon(Icons.chevron_right_rounded, color: ui.text),
-          ],
-        ),
-      ),
-    );
-  }
+  State<WeatherOverlay> createState() => _WeatherOverlayState();
 }
 
-class _BottomWeatherBar extends StatelessWidget {
-  final bool compact;
-  final _WorldStatus? status;
-  final bool isLoading;
+class _WeatherOverlayState extends State<WeatherOverlay>
+    with SingleTickerProviderStateMixin {
+  final List<_WeatherParticle> _particles = [];
+  final math.Random _random = math.Random();
+  late final Ticker _ticker;
+  Duration _lastElapsed = Duration.zero;
+  Size _size = Size.zero;
+  double _spawnCarry = 0;
 
-  const _BottomWeatherBar({
-    required this.compact,
-    required this.status,
-    required this.isLoading,
-  });
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker(_onTick)..start();
+  }
 
-  String _noiseLabel(NoiseLevel n) {
-    switch (n) {
-      case NoiseLevel.quiet:
-        return 'Quiet';
-      case NoiseLevel.low:
-        return 'Low';
-      case NoiseLevel.med:
-        return 'Med';
-      case NoiseLevel.high:
-        return 'High';
-      case NoiseLevel.boomBoom:
-        return 'BOOMBOOM';
+  @override
+  void didUpdateWidget(covariant WeatherOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.type != widget.type) {
+      _particles.clear();
+      _spawnCarry = 0;
+    }
+  }
+
+  void _onTick(Duration elapsed) {
+    if (widget.type == _WeatherType.none) {
+      _lastElapsed = elapsed;
+      return;
+    }
+
+    final dt = _lastElapsed == Duration.zero
+        ? 0.0
+        : (elapsed - _lastElapsed).inMilliseconds / 1000.0;
+    _lastElapsed = elapsed;
+    if (dt <= 0 || _size.isEmpty) return;
+
+    _updateParticles(dt);
+    setState(() {});
+  }
+
+  void _updateParticles(double dt) {
+    final windFactor = (widget.windSpeed / 60).clamp(0.0, 1.0).toDouble();
+    final spawnRate = switch (widget.type) {
+      _WeatherType.snow => 18 + 18 * windFactor,
+      _WeatherType.rain => 80 + 60 * windFactor,
+      _WeatherType.wind => windFactor == 0 ? 0 : 10 + 24 * windFactor,
+      _WeatherType.none => 0,
+    };
+
+    _spawnCarry += spawnRate * dt;
+    final spawnCount = _spawnCarry.floor();
+    _spawnCarry -= spawnCount;
+
+    for (var i = 0; i < spawnCount; i++) {
+      _particles.add(_spawnParticle(windFactor));
+    }
+
+    for (var i = _particles.length - 1; i >= 0; i--) {
+      final p = _particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0 ||
+          p.y > _size.height + 40 ||
+          p.x < -80 ||
+          p.x > _size.width + 80) {
+        _particles.removeAt(i);
+      }
+    }
+  }
+
+  _WeatherParticle _spawnParticle(double windFactor) {
+    switch (widget.type) {
+      case _WeatherType.snow:
+        final size = 2.0 + _random.nextDouble() * 3.5;
+        final drift = (windFactor * 40) + (_random.nextDouble() * 30 - 15);
+        final fall = 45 + _random.nextDouble() * 50;
+        return _WeatherParticle(
+          x: _random.nextDouble() * _size.width,
+          y: -10,
+          vx: drift,
+          vy: fall,
+          size: size,
+          length: size * 2,
+          life: 7 + _random.nextDouble() * 5,
+        );
+      case _WeatherType.rain:
+        final slant = (windFactor * 160) - 40;
+        return _WeatherParticle(
+          x: _random.nextDouble() * _size.width,
+          y: -20,
+          vx: slant,
+          vy: 520 + _random.nextDouble() * 320,
+          size: 1.4,
+          length: 18 + _random.nextDouble() * 14,
+          life: 2.2 + _random.nextDouble(),
+        );
+      case _WeatherType.wind:
+        final speed = 240 + windFactor * 320;
+        return _WeatherParticle(
+          x: -60,
+          y: _random.nextDouble() * _size.height,
+          vx: speed,
+          vy: _random.nextDouble() * 20 - 10,
+          size: 2,
+          length: 80 + _random.nextDouble() * 60,
+          life: 3.5 + _random.nextDouble(),
+        );
+      case _WeatherType.none:
+        return _WeatherParticle(
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          size: 0,
+          length: 0,
+          life: 0,
+        );
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final ui = WorldTheme.of(context);
-    final s = status;
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
 
-    final cardShadow = [
-      BoxShadow(
-        color: ui.outline.withOpacity(0.18),
-        blurRadius: 14,
-        offset: const Offset(0, 8),
-      ),
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final nextSize = Size(constraints.maxWidth, constraints.maxHeight);
+        if (nextSize != _size) {
+          _size = nextSize;
+        }
+        return CustomPaint(
+          painter: _WeatherPainter(
+            particles: _particles,
+            type: widget.type,
+            highlight: widget.highlight,
+            accent: widget.accent,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _WeatherParticle {
+  double x;
+  double y;
+  double vx;
+  double vy;
+  double size;
+  double length;
+  double life;
+
+  _WeatherParticle({
+    required this.x,
+    required this.y,
+    required this.vx,
+    required this.vy,
+    required this.size,
+    required this.length,
+    required this.life,
+  });
+}
+
+class _WeatherPainter extends CustomPainter {
+  final List<_WeatherParticle> particles;
+  final _WeatherType type;
+  final Color highlight;
+  final Color accent;
+
+  const _WeatherPainter({
+    required this.particles,
+    required this.type,
+    required this.highlight,
+    required this.accent,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (type == _WeatherType.none) return;
+
+    switch (type) {
+      case _WeatherType.snow:
+        final snowPaint = Paint()..style = PaintingStyle.fill;
+        final glowPaint = Paint()..style = PaintingStyle.fill;
+        for (final p in particles) {
+          final alpha = (p.life / 10).clamp(0.3, 1.0).toDouble();
+          snowPaint.color = highlight.withOpacity(alpha);
+          glowPaint.color = accent.withOpacity(alpha * 0.4);
+          canvas.drawCircle(Offset(p.x, p.y), p.size, glowPaint);
+          canvas.drawCircle(Offset(p.x, p.y), p.size * 0.7, snowPaint);
+        }
+        break;
+      case _WeatherType.rain:
+        final rainPaint = Paint()
+          ..strokeWidth = 2.6
+          ..strokeCap = StrokeCap.round;
+        for (final p in particles) {
+          final alpha = (p.life / 3).clamp(0.3, 0.95).toDouble();
+          rainPaint.color = accent.withOpacity(alpha);
+          canvas.drawLine(
+            Offset(p.x, p.y),
+            Offset(p.x + p.vx * 0.08, p.y + p.length),
+            rainPaint,
+          );
+        }
+        break;
+      case _WeatherType.wind:
+        final windPaint = Paint()
+          ..strokeWidth = 2.4
+          ..strokeCap = StrokeCap.round;
+        for (final p in particles) {
+          final alpha = (p.life / 4).clamp(0.25, 0.8).toDouble();
+          windPaint.color = highlight.withOpacity(alpha);
+          canvas.drawLine(
+            Offset(p.x, p.y),
+            Offset(p.x + p.length, p.y + p.vy * 0.2),
+            windPaint,
+          );
+        }
+        break;
+      case _WeatherType.none:
+        break;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WeatherPainter oldDelegate) {
+    return true;
+  }
+}
+
+String _noiseLabel(NoiseLevel noise) {
+  switch (noise) {
+    case NoiseLevel.quiet:
+      return 'Quiet';
+    case NoiseLevel.low:
+      return 'Low';
+    case NoiseLevel.med:
+      return 'Medium';
+    case NoiseLevel.high:
+      return 'Loud';
+    case NoiseLevel.boomBoom:
+      return 'Boom';
+  }
+}
+
+int _noiseToDb(NoiseLevel noise) {
+  switch (noise) {
+    case NoiseLevel.quiet:
+      return 40;
+    case NoiseLevel.low:
+      return 55;
+    case NoiseLevel.med:
+      return 70;
+    case NoiseLevel.high:
+      return 78;
+    case NoiseLevel.boomBoom:
+      return 85;
+  }
+}
+
+double _shakeIntensityFromDb(double db) {
+  if (db < 70) return 0;
+  const minDb = 70.0;
+  const maxDb = 85.0;
+  final maxRatio = math.pow(10, (maxDb - minDb) / 20).toDouble() - 1;
+  final ratio = math.pow(10, (db - minDb) / 20).toDouble() - 1;
+  final normalized = ratio / maxRatio;
+  return normalized.clamp(0.0, 1.0).toDouble();
+}
+
+double _windIntensityFromSpeed({
+  required int windSpeed,
+  required Region region,
+}) {
+  if (region != Region.windyPlains) return 0;
+  return (windSpeed / 60).clamp(0.0, 1.0).toDouble();
+}
+
+IconData _temperatureIcon(int temperature) {
+  if (temperature <= 0) return Icons.ac_unit_rounded;
+  if (temperature <= 15) return Icons.cloud_rounded;
+  if (temperature <= 28) return Icons.thermostat_rounded;
+  return Icons.wb_sunny_rounded;
+}
+
+IconData _noiseIcon(NoiseLevel noise) {
+  switch (noise) {
+    case NoiseLevel.quiet:
+      return Icons.volume_off_rounded;
+    case NoiseLevel.low:
+      return Icons.volume_down_rounded;
+    case NoiseLevel.med:
+      return Icons.volume_up_rounded;
+    case NoiseLevel.high:
+      return Icons.volume_up_rounded;
+    case NoiseLevel.boomBoom:
+      return Icons.music_note_rounded;
+  }
+}
+
+class EnvironmentDashboard extends StatelessWidget {
+  final Environment? environment;
+
+  const EnvironmentDashboard({super.key, required this.environment});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = BankTheme.of(context);
+    final env = environment;
+
+    if (env == null) {
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: const [
+          _DashboardChip.placeholder(),
+          _DashboardChip.placeholder(),
+          _DashboardChip.placeholder(),
+        ],
+      );
+    }
+
+    final items = [
+      _DashboardChipData(Icons.public_rounded, env.region.label),
+      _DashboardChipData(_temperatureIcon(env.temperature), '${env.temperature}°C'),
+      _DashboardChipData(Icons.water_drop_rounded, '${env.humidity}%'),
+      _DashboardChipData(Icons.air_rounded, '${env.windSpeed} km/h'),
+      _DashboardChipData(Icons.brightness_6_rounded, '${env.brightness}/10'),
+      _DashboardChipData(_noiseIcon(env.noise), _noiseLabel(env.noise)),
     ];
 
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: items
+          .map(
+            (item) => ButtonMotion(
+              child: _DashboardChip(
+                icon: item.icon,
+                label: item.label,
+                background: colors.surface.withAlpha(235),
+                borderColor: colors.divider,
+                textColor: colors.text,
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _DashboardChipData {
+  final IconData icon;
+  final String label;
+
+  const _DashboardChipData(this.icon, this.label);
+}
+
+class _DashboardChip extends StatelessWidget {
+  final IconData? icon;
+  final String? label;
+  final Color? background;
+  final Color? borderColor;
+  final Color? textColor;
+  final bool placeholder;
+
+  const _DashboardChip({
+    required this.icon,
+    required this.label,
+    required this.background,
+    required this.borderColor,
+    required this.textColor,
+  }) : placeholder = false;
+
+  const _DashboardChip.placeholder()
+      : icon = null,
+        label = null,
+        background = null,
+        borderColor = null,
+        textColor = null,
+        placeholder = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = BankTheme.of(context);
+    final bg = background ?? colors.surface.withAlpha(230);
+    final border = borderColor ?? colors.divider;
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: ui.surfaceMuted,
-        border: Border.all(color: ui.outlineStrong, width: 2.5),
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: cardShadow,
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
       ),
-      child: compact
-          ? Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: ui.surface,
-                    border: Border.all(color: ui.outlineStrong, width: 2),
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: cardShadow,
-                  ),
-                  child: isLoading || s == null
-                      ? Text('location: ...\n temp, humidity',
-                          style: TextStyle(color: ui.text))
-                      : Text(
-                          'region: ${s.region.label}\n'
-                          'loc: (${s.location.x}, ${s.location.y})\n'
-                          'temp: ${s.weather.temperature}°C\n'
-                          'hum: ${s.weather.humidity}%',
-                          style: TextStyle(fontSize: 12, height: 1.25, color: ui.text),
-                        ),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: ui.surface,
-                    border: Border.all(color: ui.outlineStrong, width: 2),
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: cardShadow,
-                  ),
-                  child: isLoading || s == null
-                      ? Text('Icon (beach / snowy / foresty...)',
-                          style: TextStyle(color: ui.text))
-                      : Text(
-                          'wind: ${s.weather.windSpeed}  •  '
-                          'noise: ${_noiseLabel(s.noise)}  •  '
-                          'ambient: ${s.brightness}/10  •  '
-                          'treasure: (${s.treasureDist.dx}, ${s.treasureDist.dy})',
-                          style: TextStyle(fontSize: 12, height: 1.25, color: ui.text),
-                        ),
-                ),
-              ],
+      child: placeholder
+          ? Container(
+              width: 64,
+              height: 12,
+              decoration: BoxDecoration(
+                color: colors.divider,
+                borderRadius: BorderRadius.circular(6),
+              ),
             )
           : Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 165,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: ui.surface,
-                    border: Border.all(color: ui.outlineStrong, width: 2),
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: cardShadow,
-                  ),
-                  child: isLoading || s == null
-                      ? Text('location: ...\n temp, humidity',
-                          style: TextStyle(color: ui.text))
-                      : Text(
-                          'region: ${s.region.label}\n'
-                          'loc: (${s.location.x}, ${s.location.y})\n'
-                          'temp: ${s.weather.temperature}°C\n'
-                          'hum: ${s.weather.humidity}%',
-                          style: TextStyle(fontSize: 12, height: 1.25, color: ui.text),
-                        ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: ui.surface,
-                      border: Border.all(color: ui.outlineStrong, width: 2),
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: cardShadow,
-                    ),
-                    child: isLoading || s == null
-                        ? Text('Icon (beach / snowy / foresty...)',
-                            style: TextStyle(color: ui.text))
-                        : Text(
-                            'wind: ${s.weather.windSpeed}  •  '
-                            'noise: ${_noiseLabel(s.noise)}  •  '
-                            'ambient: ${s.brightness}/10  •  '
-                            'treasure: (${s.treasureDist.dx}, ${s.treasureDist.dy})',
-                            style: TextStyle(fontSize: 12, height: 1.25, color: ui.text),
-                          ),
+                Icon(icon, size: 16, color: textColor),
+                const SizedBox(width: 6),
+                Text(
+                  label ?? '',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: textColor,
                   ),
                 ),
               ],
@@ -1092,256 +1070,107 @@ class _BottomWeatherBar extends StatelessWidget {
   }
 }
 
-class _SlideUpPanel extends StatelessWidget {
-  final bool isOpen;
-  final double height;
-  final VoidCallback onClose;
-  final VoidCallback onSettings;
-  final Account? selectedAccount;
-
-  const _SlideUpPanel({
-    required this.isOpen,
-    required this.height,
-    required this.onClose,
-    required this.onSettings,
-    required this.selectedAccount,
-  });
+class HomeAccountsPage extends StatefulWidget {
+  const HomeAccountsPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final ui = WorldTheme.of(context);
-    final account = selectedAccount;
-
-    return AnimatedPositioned(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-      left: 12,
-      right: 12,
-      bottom: isOpen ? 12 : -(height + 24),
-      height: height,
-      child: IgnorePointer(
-        ignoring: !isOpen,
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-            decoration: BoxDecoration(
-              color: ui.surface.withOpacity(0.92),
-              border: Border.all(color: ui.outlineStrong, width: 2.5),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: ui.outline.withOpacity(0.2),
-                  blurRadius: 16,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: ui.text.withOpacity(0.35),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Treasure Hunt',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: ui.text,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: onClose,
-                      tooltip: 'Close',
-                      icon: const Icon(Icons.close_rounded),
-                      color: ui.text,
-                    ),
-                  ],
-                ),
-                if (account != null)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: ui.surfaceMuted,
-                      border: Border.all(color: ui.outline, width: 2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${account.name}  •  \$${account.balance}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: ui.text,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      'Select an account to open the hunt panel.',
-                      style: TextStyle(color: ui.textMuted),
-                    ),
-                  ),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: ui.surfaceMuted,
-                      border: Border.all(color: ui.outline, width: 2),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(
-                      'Trail map and inventory\n(placeholder)',
-                      style: TextStyle(color: ui.textMuted, height: 1.3),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _PillButton(
-                  label: 'Settings',
-                  onPressed: onSettings,
-                  big: true,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  State<HomeAccountsPage> createState() => _HomeAccountsPageState();
 }
 
-class _SketchBlankBox extends StatelessWidget {
-  final double height;
-  const _SketchBlankBox({required this.height});
+class _HomeAccountsPageState extends State<HomeAccountsPage> {
+  late Future<Environment> _environmentFuture;
+  late Future<List<Account>> _accountsFuture;
+  double _peakDb = 0;
+  Timer? _environmentTimer;
 
   @override
-  Widget build(BuildContext context) {
-    final ui = WorldTheme.of(context);
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: ui.surface,
-        border: Border.all(color: ui.outlineStrong, width: 2.5),
-        borderRadius: BorderRadius.circular(14),
-      ),
+  void initState() {
+    super.initState();
+    _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+    _accountsFuture = Api.getAccounts();
+    _environmentTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _refreshEnvironment(),
     );
   }
-}
 
-class _PillButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onPressed;
-  final bool big;
+  Environment _recordPeakDb(Environment env) {
+    final db = _noiseToDb(env.noise).toDouble();
+    if (db > _peakDb) {
+      _peakDb = db;
+    }
+    return env;
+  }
 
-  const _PillButton({
-    required this.label,
-    required this.onPressed,
-    this.big = false,
-  });
+  Future<void> _refreshAccounts() async {
+    setState(() {
+      _accountsFuture = Api.getAccounts();
+    });
+  }
+
+  void _refreshEnvironment() {
+    if (!mounted) return;
+    setState(() {
+      _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+    });
+  }
 
   @override
-  Widget build(BuildContext context) {
-    final ui = WorldTheme.of(context);
+  void dispose() {
+    _environmentTimer?.cancel();
+    super.dispose();
+  }
 
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        padding: EdgeInsets.symmetric(
-          horizontal: big ? 18 : 14,
-          vertical: big ? 14 : 10,
-        ),
-        side: BorderSide(color: ui.outlineStrong, width: 2),
-        backgroundColor: ui.pillBg.withOpacity(0.18),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        foregroundColor: ui.text,
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontWeight: FontWeight.w800,
-          fontSize: big ? 16 : 14,
-          color: ui.text,
-        ),
+  Future<void> _openAccount(Account account) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AccountDetailPage(account: account),
       ),
     );
+    await _refreshAccounts();
   }
-}
 
-// -------------------- Debug sheet (unaffected by dynamic theming) --------------------
+  Future<void> _openDebugMenu(BuildContext parentContext, Environment current) async {
+    final patch = DebugOverrides()
+      ..region = Api.debug.region ?? current.region
+      ..temperature = Api.debug.temperature ?? current.temperature
+      ..humidity = Api.debug.humidity ?? current.humidity
+      ..windSpeed = Api.debug.windSpeed ?? current.windSpeed
+      ..brightness = Api.debug.brightness ?? current.brightness
+      ..noise = Api.debug.noise ?? current.noise;
 
-Future<void> _showDebugSheet({
-  required BuildContext context,
-  required _WorldStatus? current,
-  required void Function(DebugOverrides patch) onApply,
-  required VoidCallback onClear,
-}) async {
-  final patch = DebugOverrides();
-
-  // Seed patch from current overrides (Api.debug) if you want persistence in the UI.
-  patch.region = Api.debug.region ?? current?.region;
-  patch.temperature = Api.debug.temperature ?? current?.weather.temperature;
-  patch.humidity = Api.debug.humidity ?? current?.weather.humidity;
-  patch.windSpeed = Api.debug.windSpeed ?? current?.weather.windSpeed;
-  patch.noise = Api.debug.noise ?? current?.noise;
-  patch.brightness = Api.debug.brightness ?? current?.brightness;
-  patch.location = Api.debug.location ?? current?.location;
-  patch.treasureDist = Api.debug.treasureDist ?? current?.treasureDist;
-
-  final fixedDebugTheme = ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-  );
-
-  await showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (ctx) {
-      return Theme(
-        data: fixedDebugTheme, // debug menu ignores WorldUi / background / etc.
-        child: StatefulBuilder(
+    await showModalBottomSheet(
+      context: parentContext,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) {
+        return StatefulBuilder(
           builder: (ctx, setLocal) {
-            Widget sectionTitle(String t) => Padding(
+            Widget sectionTitle(String text) => Padding(
                   padding: const EdgeInsets.only(top: 12, bottom: 6),
-                  child: Text(t, style: const TextStyle(fontWeight: FontWeight.w900)),
+                  child: Text(
+                    text,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 );
 
-            Widget sliderInt({
+            Widget sliderField({
               required String label,
               required int min,
               required int max,
-              required int? value,
-              required void Function(int v) onChanged,
+              required int value,
+              required void Function(int) onChanged,
             }) {
-              final v = (value ?? min).clamp(min, max);
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('$label: $v'),
+                  Text('$label: $value'),
                   Slider(
-                    value: v.toDouble(),
+                    value: value.toDouble(),
                     min: min.toDouble(),
                     max: max.toDouble(),
-                    divisions: (max - min),
-                    onChanged: (d) => setLocal(() => onChanged(d.round())),
+                    divisions: max - min,
+                    onChanged: (val) => setLocal(() => onChanged(val.round())),
                   ),
                 ],
               );
@@ -1351,7 +1180,7 @@ Future<void> _showDebugSheet({
               padding: EdgeInsets.only(
                 left: 16,
                 right: 16,
-                top: 14,
+                top: 12,
                 bottom: 16 + MediaQuery.of(ctx).viewInsets.bottom,
               ),
               child: SingleChildScrollView(
@@ -1362,161 +1191,1605 @@ Future<void> _showDebugSheet({
                       children: [
                         const Expanded(
                           child: Text(
-                            'Debug Overrides',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                            'Debug Environment',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                           ),
                         ),
-                        TextButton(
-                          onPressed: () {
-                            onClear();
-                            Navigator.of(ctx).pop();
-                          },
-                          child: const Text('Clear all'),
+                        ButtonMotion(
+                          child: TextButton(
+                            onPressed: () {
+                              Api.debug.clear();
+                              _refreshEnvironment();
+                              Navigator.of(ctx).pop();
+                            },
+                            child: const Text('Clear'),
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-
                     sectionTitle('Region'),
                     DropdownButtonFormField<Region>(
-                      value: patch.region ?? Region.darkCave,
+                      initialValue: patch.region ?? Region.darkCave,
                       items: Region.values
                           .map((r) => DropdownMenuItem(value: r, child: Text(r.label)))
                           .toList(),
-                      onChanged: (r) => setLocal(() => patch.region = r),
+                      onChanged: (value) =>
+                          setLocal(() => patch.region = value ?? patch.region),
                     ),
-
-                    sectionTitle('Ambient light (1..10)'),
-                    sliderInt(
-                      label: 'Brightness',
-                      min: 1,
-                      max: 10,
-                      value: patch.brightness,
-                      onChanged: (v) => patch.brightness = v,
-                    ),
-
-                    sectionTitle('Weather'),
-                    sliderInt(
+                    sectionTitle('Temperature'),
+                    sliderField(
                       label: 'Temperature (°C)',
                       min: -30,
                       max: 50,
-                      value: patch.temperature,
-                      onChanged: (v) => patch.temperature = v,
+                      value: patch.temperature ?? current.temperature,
+                      onChanged: (value) => patch.temperature = value,
                     ),
-                    sliderInt(
+                    sectionTitle('Humidity'),
+                    sliderField(
                       label: 'Humidity (%)',
                       min: 0,
                       max: 100,
-                      value: patch.humidity,
-                      onChanged: (v) => patch.humidity = v,
+                      value: patch.humidity ?? current.humidity,
+                      onChanged: (value) => patch.humidity = value,
                     ),
-                    sliderInt(
-                      label: 'Wind speed',
+                    sectionTitle('Wind'),
+                    sliderField(
+                      label: 'Wind Speed',
                       min: 0,
                       max: 60,
-                      value: patch.windSpeed,
-                      onChanged: (v) => patch.windSpeed = v,
+                      value: patch.windSpeed ?? current.windSpeed,
+                      onChanged: (value) => patch.windSpeed = value,
                     ),
-
+                    sectionTitle('Brightness'),
+                    sliderField(
+                      label: 'Brightness (1-10)',
+                      min: 1,
+                      max: 10,
+                      value: patch.brightness ?? current.brightness,
+                      onChanged: (value) => patch.brightness = value,
+                    ),
                     sectionTitle('Noise'),
                     DropdownButtonFormField<NoiseLevel>(
-                      value: patch.noise ?? NoiseLevel.med,
+                      initialValue: patch.noise ?? current.noise,
                       items: NoiseLevel.values
                           .map((n) => DropdownMenuItem(value: n, child: Text(n.name)))
                           .toList(),
-                      onChanged: (n) => setLocal(() => patch.noise = n),
+                      onChanged: (value) =>
+                          setLocal(() => patch.noise = value ?? patch.noise),
                     ),
-
-                    sectionTitle('Location'),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            initialValue:
-                                (patch.location?.x ?? current?.location.x ?? 0).toString(),
-                            decoration: const InputDecoration(labelText: 'x'),
-                            keyboardType: TextInputType.number,
-                            onChanged: (t) {
-                              final x = int.tryParse(t) ?? 0;
-                              final y = patch.location?.y ?? current?.location.y ?? 0;
-                              patch.location = WorldLocation(x, y);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextFormField(
-                            initialValue:
-                                (patch.location?.y ?? current?.location.y ?? 0).toString(),
-                            decoration: const InputDecoration(labelText: 'y'),
-                            keyboardType: TextInputType.number,
-                            onChanged: (t) {
-                              final y = int.tryParse(t) ?? 0;
-                              final x = patch.location?.x ?? current?.location.x ?? 0;
-                              patch.location = WorldLocation(x, y);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    sectionTitle('Treasure distance'),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            initialValue: (patch.treasureDist?.dx ??
-                                    current?.treasureDist.dx ??
-                                    0)
-                                .toString(),
-                            decoration: const InputDecoration(labelText: 'dx'),
-                            keyboardType: TextInputType.number,
-                            onChanged: (t) {
-                              final dx = int.tryParse(t) ?? 0;
-                              final dy = patch.treasureDist?.dy ?? current?.treasureDist.dy ?? 0;
-                              patch.treasureDist = DistanceToTreasure(dx, dy);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextFormField(
-                            initialValue: (patch.treasureDist?.dy ??
-                                    current?.treasureDist.dy ??
-                                    0)
-                                .toString(),
-                            decoration: const InputDecoration(labelText: 'dy'),
-                            keyboardType: TextInputType.number,
-                            onChanged: (t) {
-                              final dy = int.tryParse(t) ?? 0;
-                              final dx = patch.treasureDist?.dx ?? current?.treasureDist.dx ?? 0;
-                              patch.treasureDist = DistanceToTreasure(dx, dy);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-
                     const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: () {
-                        onApply(patch);
-                        Navigator.of(ctx).pop();
-                      },
-                      child: const Text('Apply + Refresh'),
+                    ButtonMotion(
+                      child: FilledButton(
+                        onPressed: () {
+                          Api.debug
+                            ..region = patch.region
+                            ..temperature = patch.temperature
+                            ..humidity = patch.humidity
+                            ..windSpeed = patch.windSpeed
+                            ..brightness = patch.brightness
+                            ..noise = patch.noise;
+                          _refreshEnvironment();
+                          Navigator.of(ctx).pop();
+                        },
+                        child: const Text('Apply'),
+                      ),
                     ),
-                    const SizedBox(height: 10),
-                    OutlinedButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      child: const Text('Close'),
+                    const SizedBox(height: 8),
+                    ButtonMotion(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text('Close'),
+                      ),
                     ),
                   ],
                 ),
               ),
             );
           },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final headerHeight = _headerHeight(context, 0.32, min: 220, max: 320);
+
+    return FutureBuilder<Environment>(
+      future: _environmentFuture,
+      builder: (context, snapshot) {
+        final environment = snapshot.data;
+        final region = environment?.region ?? Region.darkCave;
+        final colors = BankColors.forEnvironment(
+          region: region,
+          temperature: environment?.temperature,
+          humidity: environment?.humidity,
+          brightness: environment?.brightness,
+        );
+        final shakeIntensity = _shakeIntensityFromDb(_peakDb);
+        final windSpeed = environment?.windSpeed ?? 0;
+        final windIntensity = _windIntensityFromSpeed(
+          windSpeed: windSpeed,
+          region: region,
+        );
+        final weather = _weatherForRegion(region);
+        final weatherPalette = _weatherPalette(region, colors);
+
+        return BankTheme(
+          colors: colors,
+          child: BankEffects(
+            environment: environment,
+            windIntensity: windIntensity,
+            shakeIntensity: shakeIntensity,
+            child: Theme(
+              data: _buildTheme(colors),
+              child: Stack(
+                children: [
+                  Scaffold(
+                    body: Column(
+                      children: [
+                        RegionHeader(
+                          region: region,
+                          height: headerHeight,
+                          child: Stack(
+                            children: [
+                              Align(
+                                alignment: Alignment.topRight,
+                                child: ButtonMotion(
+                                  enabled: environment != null,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.tune_rounded),
+                                    tooltip: 'Debug',
+                                    onPressed: environment == null
+                                        ? null
+                                        : () => _openDebugMenu(context, environment),
+                                  ),
+                                ),
+                              ),
+                              Align(
+                                alignment: Alignment.bottomLeft,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    EnvironmentDashboard(
+                                      environment: environment,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      'Good Morning',
+                                      style: TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    const Text(
+                                      'The Gardens',
+                                      style: TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: SafeArea(
+                            top: false,
+                            child: Container(
+                              color: colors.surface,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 16),
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 16),
+                                    child: SectionTitle('Accounts'),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Expanded(
+                                    child: FutureBuilder<List<Account>>(
+                                      future: _accountsFuture,
+                                      builder: (context, snapshot) {
+                                        if (snapshot.connectionState !=
+                                            ConnectionState.done) {
+                                          return const Center(
+                                            child: CircularProgressIndicator(),
+                                          );
+                                        }
+
+                                        final accounts =
+                                            snapshot.data ?? const <Account>[];
+                                        if (accounts.isEmpty) {
+                                          return const Center(
+                                            child: Text('No accounts found.'),
+                                          );
+                                        }
+
+                                        return ListView.separated(
+                                          padding: const EdgeInsets.fromLTRB(
+                                              16, 0, 16, 20),
+                                          itemCount: accounts.length,
+                                          separatorBuilder: (_, __) =>
+                                              const SizedBox(height: 12),
+                                          itemBuilder: (context, index) {
+                                            final account = accounts[index];
+                                            return AccountCard(
+                                              account: account,
+                                              onTap: () => _openAccount(account),
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (weather != _WeatherType.none)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: WeatherOverlay(
+                          type: weather,
+                          windSpeed: windSpeed,
+                          highlight: weatherPalette.highlight,
+                          accent: weatherPalette.accent,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class AccountDetailPage extends StatefulWidget {
+  final Account account;
+
+  const AccountDetailPage({
+    super.key,
+    required this.account,
+  });
+
+  @override
+  State<AccountDetailPage> createState() => _AccountDetailPageState();
+}
+
+class _AccountDetailPageState extends State<AccountDetailPage> {
+  late Future<Environment> _environmentFuture;
+  late Future<Account> _accountFuture;
+  late Future<List<TransactionEntry>> _transactionsFuture;
+  double _peakDb = 0;
+  Timer? _environmentTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+    _environmentTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _refreshEnvironment(),
+    );
+    _refresh();
+  }
+
+  Environment _recordPeakDb(Environment env) {
+    final db = _noiseToDb(env.noise).toDouble();
+    if (db > _peakDb) {
+      _peakDb = db;
+    }
+    return env;
+  }
+
+  void _refresh() {
+    _accountFuture = Api.getAccount(widget.account.id);
+    _transactionsFuture = Api.getTransactions(widget.account.id);
+  }
+
+  void _refreshEnvironment() {
+    if (!mounted) return;
+    setState(() {
+      _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+    });
+  }
+
+  Future<void> _openAction(Widget page) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    setState(_refresh);
+  }
+
+  @override
+  void dispose() {
+    _environmentTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final headerHeight = _headerHeight(context, 0.2, min: 160, max: 220);
+
+    return FutureBuilder<Environment>(
+      future: _environmentFuture,
+      builder: (context, snapshot) {
+        final environment = snapshot.data;
+        final region = environment?.region ?? Region.darkCave;
+        final colors = BankColors.forEnvironment(
+          region: region,
+          temperature: environment?.temperature,
+          humidity: environment?.humidity,
+          brightness: environment?.brightness,
+        );
+        final shakeIntensity = _shakeIntensityFromDb(_peakDb);
+        final windSpeed = environment?.windSpeed ?? 0;
+        final windIntensity = _windIntensityFromSpeed(
+          windSpeed: windSpeed,
+          region: region,
+        );
+        final weather = _weatherForRegion(region);
+        final weatherPalette = _weatherPalette(region, colors);
+
+        return BankTheme(
+          colors: colors,
+          child: BankEffects(
+            environment: environment,
+            windIntensity: windIntensity,
+            shakeIntensity: shakeIntensity,
+            child: Theme(
+              data: _buildTheme(colors),
+              child: Stack(
+                children: [
+                  Scaffold(
+                    body: Column(
+                      children: [
+                        RegionHeader(
+                          region: region,
+                          height: headerHeight,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              ButtonMotion(
+                                child: IconButton(
+                                  icon: const Icon(Icons.arrow_back_rounded),
+                                  onPressed: () => Navigator.of(context).pop(),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: SafeArea(
+                            top: false,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 16),
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 16),
+                                  child: FutureBuilder<Account>(
+                                    future: _accountFuture,
+                                    builder: (context, accountSnapshot) {
+                                      final account =
+                                          accountSnapshot.data ?? widget.account;
+                                      return Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: colors.surface,
+                                          borderRadius:
+                                              BorderRadius.circular(18),
+                                          border:
+                                              Border.all(color: colors.divider),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: colors.shadow,
+                                              blurRadius: 12,
+                                              offset: const Offset(0, 6),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    account.name,
+                                                    style: const TextStyle(
+                                                      fontSize: 20,
+                                                      fontWeight: FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Text(
+                                                    _formatBalance(
+                                                      account.balance,
+                                                    ),
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: colors.textMuted,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            SizedBox(
+                                              width: 140,
+                                              height: 64,
+                                              child: FutureBuilder<
+                                                  List<TransactionEntry>>(
+                                                future: _transactionsFuture,
+                                                builder: (context, txSnapshot) {
+                                                  return BalanceSparkline(
+                                                    currentBalance:
+                                                        account.balance,
+                                                    transactions:
+                                                        txSnapshot.data ??
+                                                            const <TransactionEntry>[],
+                                                    placeholder:
+                                                        txSnapshot.connectionState !=
+                                                            ConnectionState.done,
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 16),
+                                  child: Wrap(
+                                    spacing: 12,
+                                    runSpacing: 12,
+                                    children: [
+                                      if (!widget.account.isLoan)
+                                        PillButton(
+                                          label: 'Transfer',
+                                          icon: Icons.swap_horiz_rounded,
+                                          onPressed: () => _openAction(
+                                            TransferPage(
+                                                account: widget.account),
+                                          ),
+                                        ),
+                                      if (!widget.account.isLoan)
+                                        PillButton(
+                                          label: 'Send',
+                                          icon: Icons.send_rounded,
+                                          onPressed: () => _openAction(
+                                            SendPage(account: widget.account),
+                                          ),
+                                        ),
+                                      PillButton(
+                                        label: 'Pay',
+                                        icon: Icons.receipt_long_rounded,
+                                        onPressed: () => _openAction(
+                                          PayPage(account: widget.account),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (widget.account.isLoan)
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        16, 8, 16, 0),
+                                    child: Text(
+                                      'Loan accounts can receive transfers and pay bills only.',
+                                      style: TextStyle(
+                                        color: colors.textMuted,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                const SizedBox(height: 18),
+                                const Padding(
+                                  padding:
+                                      EdgeInsets.symmetric(horizontal: 16),
+                                  child: SectionTitle('History'),
+                                ),
+                                const SizedBox(height: 10),
+                                Expanded(
+                                  child: FutureBuilder<List<TransactionEntry>>(
+                                    future: _transactionsFuture,
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState !=
+                                          ConnectionState.done) {
+                                        return const Center(
+                                          child: CircularProgressIndicator(),
+                                        );
+                                      }
+                                      final items = snapshot.data ??
+                                          const <TransactionEntry>[];
+                                      if (items.isEmpty) {
+                                        return const Center(
+                                          child: Text('No transactions yet.'),
+                                        );
+                                      }
+                                      return ListView.separated(
+                                        padding: const EdgeInsets.fromLTRB(
+                                            16, 0, 16, 20),
+                                        itemCount: items.length,
+                                        separatorBuilder: (_, __) =>
+                                            const SizedBox(height: 10),
+                                        itemBuilder: (context, index) {
+                                          return TransactionRow(
+                                            entry: items[index],
+                                          );
+                                        },
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (weather != _WeatherType.none)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: WeatherOverlay(
+                          type: weather,
+                          windSpeed: windSpeed,
+                          highlight: weatherPalette.highlight,
+                          accent: weatherPalette.accent,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+enum RecipientType { account, user, payee }
+
+Future<void> _submitTransfer({
+  required String fromAccountId,
+  required String toId,
+  required int amount,
+}) {
+  return Api.transfer(
+    fromAccountId: fromAccountId,
+    toAccountId: toId,
+    amount: amount,
+  );
+}
+
+Future<void> _submitSend({
+  required String fromAccountId,
+  required String toId,
+  required int amount,
+}) {
+  return Api.send(
+    fromAccountId: fromAccountId,
+    toUserId: toId,
+    amount: amount,
+  );
+}
+
+Future<void> _submitPay({
+  required String fromAccountId,
+  required String toId,
+  required int amount,
+}) {
+  return Api.pay(
+    fromAccountId: fromAccountId,
+    toPayeeId: toId,
+    amount: amount,
+  );
+}
+
+class TransferPage extends StatelessWidget {
+  final Account? account;
+
+  const TransferPage({
+    super.key,
+    this.account,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MoneyActionPage(
+      title: 'Transfer',
+      submitLabel: 'Continue',
+      fromAccount: account,
+      recipientType: RecipientType.account,
+      toLabel: 'To',
+      onSubmit: _submitTransfer,
+    );
+  }
+}
+
+class SendPage extends StatelessWidget {
+  final Account? account;
+
+  const SendPage({
+    super.key,
+    this.account,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MoneyActionPage(
+      title: 'Send',
+      submitLabel: 'Continue',
+      fromAccount: account,
+      recipientType: RecipientType.user,
+      toLabel: 'To',
+      onSubmit: _submitSend,
+    );
+  }
+}
+
+class PayPage extends StatelessWidget {
+  final Account? account;
+
+  const PayPage({
+    super.key,
+    this.account,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MoneyActionPage(
+      title: 'Pay Bill',
+      submitLabel: 'Pay',
+      fromAccount: account,
+      recipientType: RecipientType.payee,
+      toLabel: 'Payee',
+      onSubmit: _submitPay,
+    );
+  }
+}
+
+typedef PaymentSubmit = Future<void> Function({
+  required String fromAccountId,
+  required String toId,
+  required int amount,
+});
+
+class MoneyActionPage extends StatefulWidget {
+  final String title;
+  final String submitLabel;
+  final Account? fromAccount;
+  final RecipientType recipientType;
+  final String toLabel;
+  final PaymentSubmit onSubmit;
+
+  const MoneyActionPage({
+    super.key,
+    required this.title,
+    required this.submitLabel,
+    required this.fromAccount,
+    required this.recipientType,
+    required this.toLabel,
+    required this.onSubmit,
+  });
+
+  @override
+  State<MoneyActionPage> createState() => _MoneyActionPageState();
+}
+
+class _MoneyActionPageState extends State<MoneyActionPage> {
+  late Future<Environment> _environmentFuture;
+  late Future<List<Account>> _accountsFuture;
+  Future<List<UserProfile>>? _usersFuture;
+  Future<List<Payee>>? _payeesFuture;
+  final TextEditingController _amountController = TextEditingController();
+
+  String? _fromAccountId;
+  String? _toId;
+  bool _submitting = false;
+  double _peakDb = 0;
+  Timer? _environmentTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+    _environmentTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _refreshEnvironment(),
+    );
+    _accountsFuture = Api.getAccounts();
+    if (widget.recipientType == RecipientType.user) {
+      _usersFuture = Api.getUsers();
+    }
+    if (widget.recipientType == RecipientType.payee) {
+      _payeesFuture = Api.getPayees();
+    }
+    _fromAccountId = widget.fromAccount?.id;
+  }
+
+  Environment _recordPeakDb(Environment env) {
+    final db = _noiseToDb(env.noise).toDouble();
+    if (db > _peakDb) {
+      _peakDb = db;
+    }
+    return env;
+  }
+
+  void _refreshEnvironment() {
+    if (!mounted) return;
+    setState(() {
+      _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+    });
+  }
+
+  @override
+  void dispose() {
+    _environmentTimer?.cancel();
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  void _ensureDefaultFrom(List<Account> accounts) {
+    if (accounts.isEmpty) return;
+    if (_fromAccountId != null &&
+        accounts.any((account) => account.id == _fromAccountId)) {
+      return;
+    }
+    String fallback = accounts.first.id;
+    for (final account in accounts) {
+      final name = account.name.toLowerCase();
+      if (name.contains('checking') || name.contains('chequing')) {
+        fallback = account.id;
+        break;
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _fromAccountId != null) return;
+      setState(() => _fromAccountId = fallback);
+    });
+  }
+
+  void _ensureValidTo(List<String> validIds) {
+    if (_toId == null || validIds.contains(_toId)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _toId = null);
+    });
+  }
+
+  List<Account> _availableToAccounts(List<Account> accounts) {
+    final fromId = _fromAccountId;
+    if (fromId == null) return accounts;
+    return accounts.where((account) => account.id != fromId).toList();
+  }
+
+  List<Account> _eligibleFromAccounts(List<Account> accounts) {
+    if (widget.recipientType == RecipientType.payee) {
+      return accounts;
+    }
+    return accounts.where((account) => !account.isLoan).toList();
+  }
+
+  Widget _buildToField() {
+    switch (widget.recipientType) {
+      case RecipientType.account:
+        return FutureBuilder<List<Account>>(
+          future: _accountsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            final accounts = snapshot.data ?? const <Account>[];
+            final available = _availableToAccounts(accounts);
+            _ensureValidTo(available.map((account) => account.id).toList());
+            final selectedTo =
+                available.any((account) => account.id == _toId) ? _toId : null;
+
+            if (available.isEmpty) {
+              return Text(
+                'No destination accounts available.',
+                style: TextStyle(color: BankTheme.of(context).textMuted),
+              );
+            }
+
+            return DropdownButtonFormField<String>(
+              key: ValueKey('to-${selectedTo ?? 'none'}'),
+              initialValue: selectedTo,
+              isExpanded: true,
+              icon: const Icon(Icons.expand_more_rounded),
+              decoration: const InputDecoration(),
+              items: available
+                  .map(
+                    (account) => DropdownMenuItem(
+                      value: account.id,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              account.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(_formatAmount(account.balance)),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() => _toId = value);
+              },
+            );
+          },
+        );
+      case RecipientType.user:
+        final future = _usersFuture;
+        return FutureBuilder<List<UserProfile>>(
+          future: future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            final users = snapshot.data ?? const <UserProfile>[];
+            _ensureValidTo(users.map((user) => user.id).toList());
+            final selectedUser =
+                users.any((user) => user.id == _toId) ? _toId : null;
+            return DropdownButtonFormField<String>(
+              key: ValueKey('to-${selectedUser ?? 'none'}'),
+              initialValue: selectedUser,
+              isExpanded: true,
+              icon: const Icon(Icons.expand_more_rounded),
+              decoration: const InputDecoration(),
+              items: users
+                  .map(
+                    (user) => DropdownMenuItem(
+                      value: user.id,
+                      child: Text(user.name),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() => _toId = value);
+              },
+            );
+          },
+        );
+      case RecipientType.payee:
+        final future = _payeesFuture;
+        return FutureBuilder<List<Payee>>(
+          future: future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            final payees = snapshot.data ?? const <Payee>[];
+            _ensureValidTo(payees.map((payee) => payee.id).toList());
+            final selectedPayee =
+                payees.any((payee) => payee.id == _toId) ? _toId : null;
+            return DropdownButtonFormField<String>(
+              key: ValueKey('to-${selectedPayee ?? 'none'}'),
+              initialValue: selectedPayee,
+              isExpanded: true,
+              icon: const Icon(Icons.expand_more_rounded),
+              decoration: const InputDecoration(),
+              items: payees
+                  .map(
+                    (payee) => DropdownMenuItem(
+                      value: payee.id,
+                      child: Text(payee.name),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() => _toId = value);
+              },
+            );
+          },
+        );
+    }
+  }
+
+  Future<void> _submit() async {
+    final fromId = _fromAccountId;
+    final toId = _toId;
+    final raw = _amountController.text.trim();
+    final cleaned = raw.replaceAll(RegExp(r'[^0-9\.]'), '');
+    final parsed = double.tryParse(cleaned);
+    final amount = parsed == null ? 0 : parsed.round();
+
+    if (fromId == null || toId == null || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select accounts and enter a valid amount.'),
+          duration: Duration(milliseconds: 900),
         ),
       );
-    },
-  );
+      return;
+    }
+
+    setState(() => _submitting = true);
+    await widget.onSubmit(fromAccountId: fromId, toId: toId, amount: amount);
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final headerHeight = _headerHeight(context, 0.2, min: 160, max: 220);
+
+    return FutureBuilder<Environment>(
+      future: _environmentFuture,
+      builder: (context, snapshot) {
+        final environment = snapshot.data;
+        final region = environment?.region ?? Region.darkCave;
+        final colors = BankColors.forEnvironment(
+          region: region,
+          temperature: environment?.temperature,
+          humidity: environment?.humidity,
+          brightness: environment?.brightness,
+        );
+        final shakeIntensity = _shakeIntensityFromDb(_peakDb);
+        final windSpeed = environment?.windSpeed ?? 0;
+        final windIntensity = _windIntensityFromSpeed(
+          windSpeed: windSpeed,
+          region: region,
+        );
+        final weather = _weatherForRegion(region);
+        final weatherPalette = _weatherPalette(region, colors);
+
+        return BankTheme(
+          colors: colors,
+          child: BankEffects(
+            environment: environment,
+            windIntensity: windIntensity,
+            shakeIntensity: shakeIntensity,
+            child: Theme(
+              data: _buildTheme(colors),
+              child: Stack(
+                children: [
+                  Scaffold(
+                    body: Column(
+                      children: [
+                  RegionHeader(
+                    region: region,
+                    height: headerHeight,
+                    child: Row(
+                            children: [
+                              ButtonMotion(
+                                child: IconButton(
+                                  icon: const Icon(Icons.arrow_back_rounded),
+                                  onPressed: () => Navigator.of(context).pop(),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: SafeArea(
+                            top: false,
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: ListView(
+                                    padding:
+                                        const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                                    children: [
+                                      SectionTitle(widget.title),
+                                      const SizedBox(height: 12),
+                                      FieldLabel('From'),
+                                      FutureBuilder<List<Account>>(
+                                        future: _accountsFuture,
+                                        builder: (context, snapshot) {
+                                          if (snapshot.connectionState !=
+                                              ConnectionState.done) {
+                                            return const Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                  vertical: 18),
+                                              child: Center(
+                                                child:
+                                                    CircularProgressIndicator(),
+                                              ),
+                                            );
+                                          }
+                                          final accounts =
+                                              snapshot.data ?? const <Account>[];
+                                          final eligible =
+                                              _eligibleFromAccounts(accounts);
+                                          _ensureDefaultFrom(eligible);
+                                          final selectedFrom = eligible.any(
+                                                  (account) =>
+                                                      account.id ==
+                                                      _fromAccountId)
+                                              ? _fromAccountId
+                                              : null;
+                                          if (eligible.isEmpty) {
+                                            return Text(
+                                              'No eligible source accounts.',
+                                              style: TextStyle(
+                                                color: BankTheme.of(context)
+                                                    .textMuted,
+                                              ),
+                                            );
+                                          }
+                                          return DropdownButtonFormField<String>(
+                                            key: ValueKey(
+                                              'from-${selectedFrom ?? 'none'}',
+                                            ),
+                                            initialValue: selectedFrom,
+                                            isExpanded: true,
+                                            icon: const Icon(
+                                              Icons.expand_more_rounded,
+                                            ),
+                                            decoration: const InputDecoration(),
+                                            items: eligible
+                                                .map(
+                                                  (account) => DropdownMenuItem(
+                                                    value: account.id,
+                                                    child: Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: Text(
+                                                            account.name,
+                                                            overflow: TextOverflow
+                                                                .ellipsis,
+                                                          ),
+                                                        ),
+                                                        Text(
+                                                          _formatAmount(
+                                                            account.balance,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                )
+                                                .toList(),
+                                            onChanged: (value) {
+                                              setState(() {
+                                                _fromAccountId = value;
+                                                if (value != null &&
+                                                    value == _toId) {
+                                                  _toId = null;
+                                                }
+                                              });
+                                            },
+                                          );
+                                        },
+                                      ),
+                                      const SizedBox(height: 16),
+                                      FieldLabel('Amount'),
+                                      TextField(
+                                        controller: _amountController,
+                                        keyboardType: const TextInputType
+                                            .numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          hintText: 'Amount 0.00\$',
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      FieldLabel(widget.toLabel),
+                                      _buildToField(),
+                                    ],
+                                  ),
+                                ),
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                                  child: PillButton(
+                                    label: _submitting
+                                        ? 'Working...'
+                                        : widget.submitLabel,
+                                    onPressed: _submitting ? null : _submit,
+                                    fullWidth: true,
+                                    primary: true,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (weather != _WeatherType.none)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: WeatherOverlay(
+                          type: weather,
+                          windSpeed: windSpeed,
+                          highlight: weatherPalette.highlight,
+                          accent: weatherPalette.accent,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class SectionTitle extends StatelessWidget {
+  final String text;
+
+  const SectionTitle(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+    );
+  }
+}
+
+class FieldLabel extends StatelessWidget {
+  final String text;
+
+  const FieldLabel(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = BankTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: colors.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+class AccountCard extends StatelessWidget {
+  final Account account;
+  final VoidCallback onTap;
+
+  const AccountCard({
+    super.key,
+    required this.account,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = BankTheme.of(context);
+
+    return ButtonMotion(
+      enabled: onTap != null,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: colors.divider),
+            boxShadow: [
+              BoxShadow(
+                color: colors.shadow,
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  account.name,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                _formatAmount(account.balance),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: colors.textMuted,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class BalanceSparkline extends StatelessWidget {
+  final int currentBalance;
+  final List<TransactionEntry> transactions;
+  final bool placeholder;
+  final int maxPoints;
+
+  const BalanceSparkline({
+    super.key,
+    required this.currentBalance,
+    required this.transactions,
+    this.placeholder = false,
+    this.maxPoints = 8,
+  });
+
+  List<int> _buildSeries() {
+    final history = <int>[currentBalance];
+    var running = currentBalance;
+    for (final tx in transactions) {
+      running += tx.isDebit ? tx.amount : -tx.amount;
+      history.add(running);
+    }
+    final chronological = history.reversed.toList();
+    return _sampleSeries(chronological);
+  }
+
+  List<int> _sampleSeries(List<int> series) {
+    final limit = maxPoints < 2 ? 2 : maxPoints;
+    if (series.length <= limit) return series;
+    final step = (series.length - 1) / (limit - 1);
+    return List<int>.generate(limit, (index) {
+      final at = (index * step).round();
+      final safeIndex = at.clamp(0, series.length - 1).toInt();
+      return series[safeIndex];
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = BankTheme.of(context);
+    final series = placeholder ? const <int>[] : _buildSeries();
+
+    return CustomPaint(
+      painter: _SparklinePainter(
+        series: series,
+        placeholder: placeholder,
+        lineColor: colors.text,
+        fillColor: colors.actionFill,
+        gridColor: colors.divider,
+      ),
+    );
+  }
+}
+
+class _SparklinePainter extends CustomPainter {
+  final List<int> series;
+  final bool placeholder;
+  final Color lineColor;
+  final Color fillColor;
+  final Color gridColor;
+
+  const _SparklinePainter({
+    required this.series,
+    required this.placeholder,
+    required this.lineColor,
+    required this.fillColor,
+    required this.gridColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const padding = 6.0;
+    final width = size.width - padding * 2;
+    final height = size.height - padding * 2;
+    if (width <= 0 || height <= 0) return;
+
+    final linePaint = Paint()
+      ..color = lineColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    if (placeholder || series.length < 2) {
+      linePaint.color = gridColor;
+      final y = padding + height * 0.5;
+      canvas.drawLine(Offset(padding, y), Offset(padding + width, y), linePaint);
+      return;
+    }
+
+    final minValue = series.reduce((a, b) => a < b ? a : b).toDouble();
+    final maxValue = series.reduce((a, b) => a > b ? a : b).toDouble();
+    final range = (maxValue - minValue).abs() < 1 ? 1 : maxValue - minValue;
+
+    final path = Path();
+    final points = <Offset>[];
+    for (var i = 0; i < series.length; i++) {
+      final dx = padding + (width * i / (series.length - 1));
+      final normalized = (series[i] - minValue) / range;
+      final dy = padding + height - (normalized * height);
+      points.add(Offset(dx, dy));
+      if (i == 0) {
+        path.moveTo(dx, dy);
+      } else {
+        path.lineTo(dx, dy);
+      }
+    }
+
+    final fillPath = Path.from(path)
+      ..lineTo(padding + width, padding + height)
+      ..lineTo(padding, padding + height)
+      ..close();
+
+    final fillPaint = Paint()
+      ..color = fillColor.withAlpha(120)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawPath(fillPath, fillPaint);
+    canvas.drawPath(path, linePaint);
+
+    _drawLabels(
+      canvas,
+      series,
+      points,
+      padding,
+      width,
+      height,
+    );
+  }
+
+  void _drawLabels(
+    Canvas canvas,
+    List<int> series,
+    List<Offset> points,
+    double padding,
+    double width,
+    double height,
+  ) {
+    if (series.isEmpty) return;
+    final labelIndexes = _selectLabelIndexes(series);
+    if (labelIndexes.isEmpty) return;
+
+    final labelStyle = TextStyle(
+      color: lineColor,
+      fontSize: 10,
+      fontWeight: FontWeight.w600,
+    );
+    final labelRects = <Rect>[];
+    final dotPaint = Paint()..color = lineColor;
+    final bgPaint = Paint()..color = fillColor.withAlpha(220);
+
+    for (final index in labelIndexes) {
+      final point = points[index];
+      final value = series[index];
+      final text = _formatSparkValue(value);
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: labelStyle),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      const gap = 6.0;
+      const paddingX = 6.0;
+      const paddingY = 3.0;
+      final labelWidth = painter.width + paddingX * 2;
+      final labelHeight = painter.height + paddingY * 2;
+
+      var dx = point.dx - labelWidth / 2;
+      dx = dx.clamp(padding, padding + width - labelWidth).toDouble();
+
+      var dy = point.dy - labelHeight - gap;
+      if (dy < padding) {
+        dy = point.dy + gap;
+      }
+      if (dy + labelHeight > padding + height) {
+        dy = point.dy - labelHeight - gap;
+      }
+      dy = dy.clamp(padding, padding + height - labelHeight).toDouble();
+
+      final rect = Rect.fromLTWH(dx, dy, labelWidth, labelHeight);
+      if (labelRects.any((other) => other.overlaps(rect))) {
+        continue;
+      }
+      labelRects.add(rect);
+
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(6)),
+        bgPaint,
+      );
+      painter.paint(canvas, Offset(dx + paddingX, dy + paddingY));
+      canvas.drawCircle(point, 2.5, dotPaint);
+    }
+  }
+
+  List<int> _selectLabelIndexes(List<int> series) {
+    if (series.length <= 3) {
+      return List<int>.generate(series.length, (index) => index);
+    }
+
+    var minIndex = 0;
+    var maxIndex = 0;
+    for (var i = 1; i < series.length; i++) {
+      if (series[i] < series[minIndex]) minIndex = i;
+      if (series[i] > series[maxIndex]) maxIndex = i;
+    }
+
+    final ordered = <int>[];
+    void addIndex(int index) {
+      if (!ordered.contains(index)) {
+        ordered.add(index);
+      }
+    }
+
+    addIndex(series.length - 1);
+    addIndex(maxIndex);
+    addIndex(minIndex);
+    if (series.length <= 5) {
+      addIndex(0);
+    }
+    return ordered;
+  }
+
+  String _formatSparkValue(int value) {
+    final absValue = value.abs();
+    if (absValue >= 1000000) {
+      return '\$${(value / 1000000).toStringAsFixed(1)}m';
+    }
+    if (absValue >= 1000) {
+      return '\$${(value / 1000).toStringAsFixed(1)}k';
+    }
+    return '\$$value';
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparklinePainter oldDelegate) {
+    return placeholder != oldDelegate.placeholder ||
+        lineColor != oldDelegate.lineColor ||
+        fillColor != oldDelegate.fillColor ||
+        gridColor != oldDelegate.gridColor ||
+        !listEquals(series, oldDelegate.series);
+  }
+}
+
+class TransactionRow extends StatelessWidget {
+  final TransactionEntry entry;
+
+  const TransactionRow({
+    super.key,
+    required this.entry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = BankTheme.of(context);
+    final sign = entry.isDebit ? '-' : '+';
+
+    return ButtonMotion(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colors.divider),
+          boxShadow: [
+            BoxShadow(
+              color: colors.shadow,
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                entry.description,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '$sign${_formatAmount(entry.amount)}',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: colors.textMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class PillButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onPressed;
+  final bool fullWidth;
+  final bool primary;
+  final IconData? icon;
+
+  const PillButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.fullWidth = false,
+    this.primary = false,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = BankTheme.of(context);
+    final borderColor = primary ? colors.text : colors.divider;
+    final labelText = Text(
+      label,
+      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+    );
+    final content = icon == null
+        ? labelText
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: colors.text),
+              const SizedBox(width: 8),
+              labelText,
+            ],
+          );
+    final button = OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        side: BorderSide(color: borderColor, width: 1.2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+        backgroundColor: primary ? colors.actionFill : colors.surface,
+        foregroundColor: colors.text,
+      ),
+      child: content,
+    );
+
+    final wrapped =
+        fullWidth ? SizedBox(width: double.infinity, child: button) : button;
+    return ButtonMotion(
+      enabled: onPressed != null,
+      child: wrapped,
+    );
+  }
 }

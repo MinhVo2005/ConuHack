@@ -100,22 +100,26 @@ class Account {
   final String id;
   final String name;
   final int balance;
+  final bool isLoan;
 
   const Account({
     required this.id,
     required this.name,
     required this.balance,
+    this.isLoan = false,
   });
 
   Account copyWith({
     String? id,
     String? name,
     int? balance,
+    bool? isLoan,
   }) {
     return Account(
       id: id ?? this.id,
       name: name ?? this.name,
       balance: balance ?? this.balance,
+      isLoan: isLoan ?? this.isLoan,
     );
   }
 }
