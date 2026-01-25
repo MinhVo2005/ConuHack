@@ -57,8 +57,8 @@ const ENV_COLORS = {
     name: 'Rainy Zone'
   },
   [ENV_TYPES.ARCTIC]: {
-    ground: ['#ecf0f1', '#d5dbdb', '#aed6f1'],
-    accent: '#85c1e9',
+    ground: ['#ffffff', '#f5f5f5', '#e8e8e8'],
+    accent: '#d0d0d0',
     name: 'Arctic Snow'
   }
 };
