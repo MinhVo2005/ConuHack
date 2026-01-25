@@ -52,7 +52,7 @@ Flutter App → REST API → Backend → DB → Response → Flutter App
 |----------|--------|---------|
 | `/user/get-or-create` | POST | Login with name |
 | `/user/{id}` | GET | Get user + accounts |
-| `/accounts/{user_id}` | GET | List accounts |
+| `/user/{user_id}/accounts` | GET | List accounts |
 | `/transfer` | POST | Between own accounts |
 | `/send` | POST | To other users |
 | `/environment` | GET | Current state |
