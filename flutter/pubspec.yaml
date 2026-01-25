@@ -41,6 +41,21 @@ dependencies:
   # Socket.IO client for real-time environment updates
   socket_io_client: ^2.0.3+1
 
+  # Shake detection (accelerometer)
+  sensors_plus: ^6.1.1
+
+  # Audio recording
+  record: ^5.1.2
+
+  # File path utilities
+  path_provider: ^2.1.5
+
+  # Permissions handling
+  permission_handler: ^11.3.1
+
+  # Audio playback for TTS responses
+  just_audio: ^0.9.42
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

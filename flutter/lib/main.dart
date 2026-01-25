@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'view.dart';
 import 'login_screen.dart';
+import 'voice_overlay.dart';
 
 void main() => runApp(const BankWorldApp());
 
@@ -28,6 +29,10 @@ class BankWorldApp extends StatelessWidget {
             outline: colors.divider,
           ),
         ),
+        // Wrap with voice overlay for global shake detection
+        builder: (context, child) {
+          return VoiceCommandOverlay(child: child ?? const SizedBox.shrink());
+        },
         home: const LoginScreen(),
       ),
     );
