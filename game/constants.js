@@ -7,7 +7,7 @@ const CANVAS_HEIGHT = 600;
 
 // Player
 const PLAYER_SIZE = 32;
-const PLAYER_SPEED = 4;
+const PLAYER_SPEED = 2;
 
 // Environment types
 const ENV_TYPES = {
