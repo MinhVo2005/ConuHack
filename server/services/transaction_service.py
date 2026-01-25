@@ -44,13 +44,22 @@ class TransactionService:
                 detail="Cannot transfer between different users. Use send money instead."
             )
 
+        if from_account.is_loan:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot transfer from credit card accounts."
+            )
+
         # Validate sufficient funds
         if from_account.balance < amount:
             raise HTTPException(status_code=400, detail="Insufficient funds")
 
         # Perform transfer
         from_account.balance -= amount
-        to_account.balance += amount
+        if to_account.is_loan:
+            to_account.balance = max(to_account.balance - amount, 0)
+        else:
+            to_account.balance += amount
 
         # Record transaction
         transaction = Transaction(
@@ -80,7 +89,10 @@ class TransactionService:
                 detail="Cannot deposit to treasure chest. Use collect gold instead."
             )
 
-        account.balance += amount
+        if account.is_loan:
+            account.balance = max(account.balance - amount, 0)
+        else:
+            account.balance += amount
 
         transaction = Transaction(
             from_account_id=None,
@@ -109,10 +121,12 @@ class TransactionService:
                 detail="Cannot withdraw from treasure chest. Use gold exchange instead."
             )
 
-        if account.balance < amount:
-            raise HTTPException(status_code=400, detail="Insufficient funds")
-
-        account.balance -= amount
+        if account.is_loan:
+            account.balance += amount
+        else:
+            if account.balance < amount:
+                raise HTTPException(status_code=400, detail="Insufficient funds")
+            account.balance -= amount
 
         transaction = Transaction(
             from_account_id=account_id,

@@ -17,21 +17,27 @@ String _generateUuid() {
 }
 
 class BackendService {
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = String.fromEnvironment(
+    'BACKEND_URL',
+    defaultValue: 'http://localhost:3000',
+  );
   static const String apiUrl = '$baseUrl/api';
 
   static io.Socket? _socket;
   static String? _currentUserId;
   static Function(Environment)? _onEnvironmentUpdate;
+  static void Function()? _onGoldUpdate;
 
   // ==================== Socket.IO ====================
 
   static void connect({
     required String userId,
     Function(Environment)? onEnvironmentUpdate,
+    void Function()? onGoldUpdate,
   }) {
     _currentUserId = userId;
     _onEnvironmentUpdate = onEnvironmentUpdate;
+    _onGoldUpdate = onGoldUpdate;
 
     _socket = io.io(baseUrl, <String, dynamic>{
       'transports': ['websocket'],
@@ -54,10 +60,23 @@ class BackendService {
 
     _socket!.on('playerData', (data) {
       print('Received player data: $data');
+      if (_onGoldUpdate != null) {
+        _onGoldUpdate!();
+      }
     });
 
     _socket!.on('goldCollected', (data) {
       print('Gold collected: $data');
+      if (_onGoldUpdate != null) {
+        _onGoldUpdate!();
+      }
+    });
+
+    _socket!.on('goldUpdated', (data) {
+      print('Gold updated: $data');
+      if (_onGoldUpdate != null) {
+        _onGoldUpdate!();
+      }
     });
 
     _socket!.onDisconnect((_) {
@@ -73,6 +92,8 @@ class BackendService {
     _socket?.disconnect();
     _socket = null;
     _currentUserId = null;
+    _onEnvironmentUpdate = null;
+    _onGoldUpdate = null;
   }
 
   static bool get isConnected => _socket?.connected ?? false;
@@ -122,8 +143,9 @@ class BackendService {
 
   static Future<List<UserProfile>> findUsers(String query) async {
     try {
+      final cleaned = query.trim();
       final response = await http.get(
-        Uri.parse('$apiUrl/users?q=$query'),
+        Uri.parse('$apiUrl/users?search=$cleaned'),
       );
 
       if (response.statusCode == 200) {
@@ -142,7 +164,7 @@ class BackendService {
   static Future<List<Account>> getAccounts(String userId) async {
     try {
       final response = await http.get(
-        Uri.parse('$apiUrl/accounts/$userId'),
+        Uri.parse('$apiUrl/user/$userId/accounts'),
       );
 
       if (response.statusCode == 200) {
@@ -175,7 +197,10 @@ class BackendService {
     }
   }
 
-  static Future<List<TransactionEntry>> getAccountTransactions(String accountId) async {
+  static Future<List<TransactionEntry>> getAccountTransactions(
+    String accountId, {
+    bool isLoan = false,
+  }) async {
     try {
       final response = await http.get(
         Uri.parse('$apiUrl/account/$accountId/transactions'),
@@ -184,7 +209,15 @@ class BackendService {
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         final intAccountId = int.tryParse(accountId);
-        return data.map((t) => TransactionEntry.fromJson(t, forAccountId: intAccountId)).toList();
+        return data
+            .map(
+              (t) => TransactionEntry.fromJson(
+                t,
+                forAccountId: intAccountId,
+                accountIsLoan: isLoan,
+              ),
+            )
+            .toList();
       }
       return [];
     } catch (e) {
@@ -208,7 +241,7 @@ class BackendService {
           'amount': amount,
         }),
       );
-      return response.statusCode == 200;
+      return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       print('Transfer error: $e');
       return false;
@@ -230,7 +263,7 @@ class BackendService {
           'amount': amount,
         }),
       );
-      return response.statusCode == 200;
+      return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       print('Send money error: $e');
       return false;
@@ -321,22 +354,90 @@ class BackendService {
   // ==================== Helpers ====================
 
   static Environment _parseEnvironment(Map<String, dynamic> data) {
+    final temperature = _readInt(data['temperature'], 20);
+    final humidity = _readInt(data['humidity'], 50);
+    final windSpeed = _readInt(data['wind_speed'] ?? data['windSpeed'], 0);
+    final brightness = _readInt(data['brightness'], 5);
+    final noiseRaw = data['noise']?.toString();
+    final region = _parseRegion(data['region'] ?? data['type']) ??
+        _mapEnvironmentToRegion(
+          brightness: brightness,
+          noise: noiseRaw ?? 'low',
+          temperature: temperature,
+          humidity: humidity,
+          windSpeed: windSpeed,
+        );
+
     return Environment(
-      region: _mapBrightnessToRegion(data['brightness'] ?? 5, data['noise'] ?? 'low'),
-      temperature: data['temperature'] ?? 20,
-      humidity: data['humidity'] ?? 50,
-      windSpeed: data['wind_speed'] ?? 0,
-      brightness: data['brightness'] ?? 5,
-      noise: _parseNoiseLevel(data['noise']),
+      region: region,
+      temperature: temperature,
+      humidity: humidity,
+      windSpeed: windSpeed,
+      brightness: brightness,
+      noise: _parseNoiseLevel(noiseRaw),
     );
   }
 
-  static Region _mapBrightnessToRegion(int brightness, String noise) {
-    // Map backend environment to Flutter regions based on conditions
+  static Region _mapEnvironmentToRegion({
+    required int brightness,
+    required String noise,
+    required int temperature,
+    required int humidity,
+    required int windSpeed,
+  }) {
+    final noiseKey = noise.toLowerCase();
+    if (temperature <= 0) return Region.arcticSnows;
     if (brightness <= 2) return Region.darkCave;
+    if (windSpeed >= 35) return Region.windyPlains;
+    if (noiseKey == 'high' || noiseKey == 'boomboom') return Region.loudJungle;
     if (brightness >= 8) return Region.dryBeach;
-    if (noise == 'high' || noise == 'boomboom') return Region.loudJungle;
+    if (humidity >= 80) return Region.rainforest;
     return Region.rainforest;
+  }
+
+  static Region? _parseRegion(dynamic value) {
+    if (value is Region) {
+      return value;
+    }
+    if (value is! String) {
+      return null;
+    }
+    final key = value.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+    switch (key) {
+      case 'drybeach':
+      case 'beach':
+        return Region.dryBeach;
+      case 'darkcave':
+      case 'cave':
+        return Region.darkCave;
+      case 'loudjungle':
+      case 'jungle':
+        return Region.loudJungle;
+      case 'windyplains':
+      case 'windy':
+        return Region.windyPlains;
+      case 'rainforest':
+      case 'rain':
+        return Region.rainforest;
+      case 'arcticsnows':
+      case 'arctic':
+        return Region.arcticSnows;
+      default:
+        return null;
+    }
+  }
+
+  static int _readInt(dynamic value, int fallback) {
+    if (value == null) {
+      return fallback;
+    }
+    if (value is num) {
+      return value.round();
+    }
+    if (value is String) {
+      return int.tryParse(value) ?? fallback;
+    }
+    return fallback;
   }
 
   static NoiseLevel _parseNoiseLevel(String? noise) {

@@ -320,6 +320,55 @@ class BankEffects extends InheritedWidget {
   }
 }
 
+class PageEntrance extends StatefulWidget {
+  final Widget child;
+  final Duration duration;
+  final Offset offset;
+
+  const PageEntrance({
+    super.key,
+    required this.child,
+    this.duration = const Duration(milliseconds: 420),
+    this.offset = const Offset(0, 0.03),
+  });
+
+  @override
+  State<PageEntrance> createState() => _PageEntranceState();
+}
+
+class _PageEntranceState extends State<PageEntrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+  )..forward();
+  late final Animation<double> _opacity = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeOutCubic,
+  );
+  late final Animation<Offset> _slide = Tween<Offset>(
+    begin: widget.offset,
+    end: Offset.zero,
+  ).animate(_opacity);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(
+        position: _slide,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 double _headerHeight(BuildContext context, double fraction,
     {double min = 200, double max = 320}) {
   final height = MediaQuery.of(context).size.height * fraction;
@@ -1068,6 +1117,8 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
   double _peakDb = 0;
   Timer? _environmentTimer;
   Environment? _liveEnvironment; // For Socket.IO updates
+  DateTime? _lastEnvironmentUpdate;
+  static const Duration _environmentThrottle = Duration(milliseconds: 400);
 
   bool get _useBackend => widget.userId != null;
 
@@ -1081,6 +1132,7 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
       BackendService.connect(
         userId: widget.userId!,
         onEnvironmentUpdate: _onEnvironmentUpdate,
+        onGoldUpdate: _onGoldUpdate,
       );
     }
 
@@ -1112,17 +1164,41 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
 
   void _onEnvironmentUpdate(Environment env) {
     if (!mounted) return;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      return;
+    }
+    final now = DateTime.now();
+    if (_lastEnvironmentUpdate != null &&
+        now.difference(_lastEnvironmentUpdate!) < _environmentThrottle) {
+      return;
+    }
+    if (_liveEnvironment != null && _isSameEnvironment(_liveEnvironment!, env)) {
+      return;
+    }
     setState(() {
       _liveEnvironment = env;
       _recordPeakDb(env);
     });
+    _lastEnvironmentUpdate = now;
+  }
+
+  bool _isSameEnvironment(Environment a, Environment b) {
+    return a.region == b.region &&
+        a.temperature == b.temperature &&
+        a.humidity == b.humidity &&
+        a.windSpeed == b.windSpeed &&
+        a.brightness == b.brightness &&
+        a.noise == b.noise;
+  }
+
+  void _onGoldUpdate() {
+    if (!mounted) return;
+    _refreshAccounts();
   }
 
   Environment _recordPeakDb(Environment env) {
-    final db = _noiseToDb(env.noise).toDouble();
-    if (db > _peakDb) {
-      _peakDb = db;
-    }
+    _peakDb = _noiseToDb(env.noise).toDouble();
     return env;
   }
 
@@ -1362,130 +1438,132 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
             shakeIntensity: shakeIntensity,
             child: Theme(
               data: _buildTheme(colors),
-              child: Stack(
-                children: [
-                  Scaffold(
-                    body: Column(
-                      children: [
-                        RegionHeader(
-                          region: region,
-                          height: headerHeight,
-                          child: Stack(
-                            children: [
-                              Align(
-                                alignment: Alignment.topRight,
-                                child: ButtonMotion(
-                                  enabled: environment != null,
-                                  child: IconButton(
-                                    icon: const Icon(Icons.tune_rounded),
-                                    tooltip: 'Debug',
-                                    onPressed: environment == null
-                                        ? null
-                                        : () => _openDebugMenu(context, environment),
+              child: PageEntrance(
+                child: Stack(
+                  children: [
+                    Scaffold(
+                      body: Column(
+                        children: [
+                          RegionHeader(
+                            region: region,
+                            height: headerHeight,
+                            child: Stack(
+                              children: [
+                                Align(
+                                  alignment: Alignment.topRight,
+                                  child: ButtonMotion(
+                                    enabled: environment != null,
+                                    child: IconButton(
+                                      icon: const Icon(Icons.tune_rounded),
+                                      tooltip: 'Debug',
+                                      onPressed: environment == null
+                                          ? null
+                                          : () => _openDebugMenu(context, environment),
+                                    ),
                                   ),
                                 ),
-                              ),
-                              Align(
-                                alignment: Alignment.bottomLeft,
+                                Align(
+                                  alignment: Alignment.bottomLeft,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      EnvironmentDashboard(
+                                        environment: environment,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      const Text(
+                                        'Good Morning',
+                                        style: TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      const Text(
+                                        'The Gardens',
+                                        style: TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: SafeArea(
+                              top: false,
+                              child: Container(
+                                color: colors.surface,
                                 child: Column(
-                                  mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    EnvironmentDashboard(
-                                      environment: environment,
+                                    const SizedBox(height: 16),
+                                    const Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 16),
+                                      child: SectionTitle('Accounts'),
                                     ),
                                     const SizedBox(height: 12),
-                                    const Text(
-                                      'Good Morning',
-                                      style: TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    const Text(
-                                      'The Gardens',
-                                      style: TextStyle(
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w800,
+                                    Expanded(
+                                      child: FutureBuilder<List<Account>>(
+                                        future: _accountsFuture,
+                                        builder: (context, snapshot) {
+                                          if (snapshot.connectionState !=
+                                              ConnectionState.done) {
+                                            return const Center(
+                                              child: CircularProgressIndicator(),
+                                            );
+                                          }
+
+                                          final accounts =
+                                              snapshot.data ?? const <Account>[];
+                                          if (accounts.isEmpty) {
+                                            return const Center(
+                                              child: Text('No accounts found.'),
+                                            );
+                                          }
+
+                                          return ListView.separated(
+                                            padding: const EdgeInsets.fromLTRB(
+                                                16, 0, 16, 20),
+                                            itemCount: accounts.length,
+                                            separatorBuilder: (_, __) =>
+                                                const SizedBox(height: 12),
+                                            itemBuilder: (context, index) {
+                                              final account = accounts[index];
+                                              return AccountCard(
+                                                account: account,
+                                                onTap: () => _openAccount(account),
+                                              );
+                                            },
+                                          );
+                                        },
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: SafeArea(
-                            top: false,
-                            child: Container(
-                              color: colors.surface,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const SizedBox(height: 16),
-                                  const Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 16),
-                                    child: SectionTitle('Accounts'),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Expanded(
-                                    child: FutureBuilder<List<Account>>(
-                                      future: _accountsFuture,
-                                      builder: (context, snapshot) {
-                                        if (snapshot.connectionState !=
-                                            ConnectionState.done) {
-                                          return const Center(
-                                            child: CircularProgressIndicator(),
-                                          );
-                                        }
-
-                                        final accounts =
-                                            snapshot.data ?? const <Account>[];
-                                        if (accounts.isEmpty) {
-                                          return const Center(
-                                            child: Text('No accounts found.'),
-                                          );
-                                        }
-
-                                        return ListView.separated(
-                                          padding: const EdgeInsets.fromLTRB(
-                                              16, 0, 16, 20),
-                                          itemCount: accounts.length,
-                                          separatorBuilder: (_, __) =>
-                                              const SizedBox(height: 12),
-                                          itemBuilder: (context, index) {
-                                            final account = accounts[index];
-                                            return AccountCard(
-                                              account: account,
-                                              onTap: () => _openAccount(account),
-                                            );
-                                          },
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (weather != _WeatherType.none)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: WeatherOverlay(
-                          type: weather,
-                          windSpeed: windSpeed,
-                          highlight: weatherPalette.highlight,
-                          accent: weatherPalette.accent,
-                        ),
+                        ],
                       ),
                     ),
-                ],
+                    if (weather != _WeatherType.none)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: WeatherOverlay(
+                            type: weather,
+                            windSpeed: windSpeed,
+                            highlight: weatherPalette.highlight,
+                            accent: weatherPalette.accent,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1542,10 +1620,7 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
   }
 
   Environment _recordPeakDb(Environment env) {
-    final db = _noiseToDb(env.noise).toDouble();
-    if (db > _peakDb) {
-      _peakDb = db;
-    }
+    _peakDb = _noiseToDb(env.noise).toDouble();
     return env;
   }
 
@@ -1553,7 +1628,10 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
     if (_useBackend) {
       // Use backend - account.id is the integer ID from backend
       _accountFuture = Future.value(widget.account);
-      _transactionsFuture = BackendService.getAccountTransactions(widget.account.id);
+      _transactionsFuture = BackendService.getAccountTransactions(
+        widget.account.id,
+        isLoan: widget.account.isLoan,
+      );
     } else {
       _accountFuture = Api.getAccount(widget.account.id);
       _transactionsFuture = Api.getTransactions(widget.account.id);
@@ -1614,237 +1692,239 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
             shakeIntensity: shakeIntensity,
             child: Theme(
               data: _buildTheme(colors),
-              child: Stack(
-                children: [
-                  Scaffold(
-                    body: Column(
-                      children: [
-                        RegionHeader(
-                          region: region,
-                          height: headerHeight,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              ButtonMotion(
-                                child: IconButton(
-                                  icon: const Icon(Icons.arrow_back_rounded),
-                                  onPressed: () => Navigator.of(context).pop(),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: SafeArea(
-                            top: false,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+              child: PageEntrance(
+                child: Stack(
+                  children: [
+                    Scaffold(
+                      body: Column(
+                        children: [
+                          RegionHeader(
+                            region: region,
+                            height: headerHeight,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                const SizedBox(height: 16),
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 16),
-                                  child: FutureBuilder<Account>(
-                                    future: _accountFuture,
-                                    builder: (context, accountSnapshot) {
-                                      final account =
-                                          accountSnapshot.data ?? widget.account;
-                                      return Container(
-                                        padding: const EdgeInsets.all(16),
-                                        decoration: BoxDecoration(
-                                          color: colors.surface,
-                                          borderRadius:
-                                              BorderRadius.circular(18),
-                                          border:
-                                              Border.all(color: colors.divider),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: colors.shadow,
-                                              blurRadius: 12,
-                                              offset: const Offset(0, 6),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    account.name,
-                                                    style: const TextStyle(
-                                                      fontSize: 20,
-                                                      fontWeight: FontWeight.w700,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 6),
-                                                  Text(
-                                                    _formatBalance(
-                                                      account.balance,
-                                                    ),
-                                                    style: TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: colors.textMuted,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            SizedBox(
-                                              width: 140,
-                                              height: 64,
-                                              child: FutureBuilder<
-                                                  List<TransactionEntry>>(
-                                                future: _transactionsFuture,
-                                                builder: (context, txSnapshot) {
-                                                  return BalanceSparkline(
-                                                    currentBalance:
-                                                        account.balance,
-                                                    transactions:
-                                                        txSnapshot.data ??
-                                                            const <TransactionEntry>[],
-                                                    placeholder:
-                                                        txSnapshot.connectionState !=
-                                                            ConnectionState.done,
-                                                  );
-                                                },
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 16),
-                                  child: Wrap(
-                                    spacing: 12,
-                                    runSpacing: 12,
-                                    children: [
-                                      if (!widget.account.isLoan)
-                                        PillButton(
-                                          label: 'Transfer',
-                                          icon: Icons.swap_horiz_rounded,
-                                          onPressed: () => _openAction(
-                                            TransferPage(
-                                              account: widget.account,
-                                              userId: widget.userId,
-                                            ),
-                                          ),
-                                        ),
-                                      if (!widget.account.isLoan)
-                                        PillButton(
-                                          label: 'Send',
-                                          icon: Icons.send_rounded,
-                                          onPressed: () => _openAction(
-                                            SendPage(
-                                              account: widget.account,
-                                              userId: widget.userId,
-                                            ),
-                                          ),
-                                        ),
-                                      PillButton(
-                                        label: 'Pay',
-                                        icon: Icons.receipt_long_rounded,
-                                        onPressed: () => _openAction(
-                                          PayPage(
-                                            account: widget.account,
-                                            userId: widget.userId,
-                                          ),
-                                        ),
-                                      ),
-                                      // Gold exchange button for treasure chest
-                                      if (widget.account.type == 'treasure_chest' && widget.userId != null)
-                                        PillButton(
-                                          label: 'Exchange',
-                                          icon: Icons.currency_exchange,
-                                          onPressed: () => _openAction(
-                                            GoldExchangePage(
-                                              treasureAccount: widget.account,
-                                              userId: widget.userId!,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                if (widget.account.isLoan)
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        16, 8, 16, 0),
-                                    child: Text(
-                                      'Loan accounts can receive transfers and pay bills only.',
-                                      style: TextStyle(
-                                        color: colors.textMuted,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ),
-                                const SizedBox(height: 18),
-                                const Padding(
-                                  padding:
-                                      EdgeInsets.symmetric(horizontal: 16),
-                                  child: SectionTitle('History'),
-                                ),
-                                const SizedBox(height: 10),
-                                Expanded(
-                                  child: FutureBuilder<List<TransactionEntry>>(
-                                    future: _transactionsFuture,
-                                    builder: (context, snapshot) {
-                                      if (snapshot.connectionState !=
-                                          ConnectionState.done) {
-                                        return const Center(
-                                          child: CircularProgressIndicator(),
-                                        );
-                                      }
-                                      final items = snapshot.data ??
-                                          const <TransactionEntry>[];
-                                      if (items.isEmpty) {
-                                        return const Center(
-                                          child: Text('No transactions yet.'),
-                                        );
-                                      }
-                                      return ListView.separated(
-                                        padding: const EdgeInsets.fromLTRB(
-                                            16, 0, 16, 20),
-                                        itemCount: items.length,
-                                        separatorBuilder: (_, __) =>
-                                            const SizedBox(height: 10),
-                                        itemBuilder: (context, index) {
-                                          return TransactionRow(
-                                            entry: items[index],
-                                          );
-                                        },
-                                      );
-                                    },
+                                ButtonMotion(
+                                  child: IconButton(
+                                    icon: const Icon(Icons.arrow_back_rounded),
+                                    onPressed: () => Navigator.of(context).pop(),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (weather != _WeatherType.none)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: WeatherOverlay(
-                          type: weather,
-                          windSpeed: windSpeed,
-                          highlight: weatherPalette.highlight,
-                          accent: weatherPalette.accent,
-                        ),
+                          Expanded(
+                            child: SafeArea(
+                              top: false,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 16),
+                                  Padding(
+                                    padding:
+                                        const EdgeInsets.symmetric(horizontal: 16),
+                                    child: FutureBuilder<Account>(
+                                      future: _accountFuture,
+                                      builder: (context, accountSnapshot) {
+                                        final account =
+                                            accountSnapshot.data ?? widget.account;
+                                        return Container(
+                                          padding: const EdgeInsets.all(16),
+                                          decoration: BoxDecoration(
+                                            color: colors.surface,
+                                            borderRadius:
+                                                BorderRadius.circular(18),
+                                            border:
+                                                Border.all(color: colors.divider),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: colors.shadow,
+                                                blurRadius: 12,
+                                                offset: const Offset(0, 6),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      account.name,
+                                                      style: const TextStyle(
+                                                        fontSize: 20,
+                                                        fontWeight: FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    Text(
+                                                      _formatBalance(
+                                                        account.balance,
+                                                      ),
+                                                      style: TextStyle(
+                                                        fontSize: 16,
+                                                        fontWeight: FontWeight.w600,
+                                                        color: colors.textMuted,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              SizedBox(
+                                                width: 140,
+                                                height: 64,
+                                                child: FutureBuilder<
+                                                    List<TransactionEntry>>(
+                                                  future: _transactionsFuture,
+                                                  builder: (context, txSnapshot) {
+                                                    return BalanceSparkline(
+                                                      currentBalance:
+                                                          account.balance,
+                                                      transactions:
+                                                          txSnapshot.data ??
+                                                              const <TransactionEntry>[],
+                                                      placeholder:
+                                                          txSnapshot.connectionState !=
+                                                              ConnectionState.done,
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Padding(
+                                    padding:
+                                        const EdgeInsets.symmetric(horizontal: 16),
+                                    child: Wrap(
+                                      spacing: 12,
+                                      runSpacing: 12,
+                                      children: [
+                                        if (!widget.account.isLoan)
+                                          PillButton(
+                                            label: 'Transfer',
+                                            icon: Icons.swap_horiz_rounded,
+                                            onPressed: () => _openAction(
+                                              TransferPage(
+                                                account: widget.account,
+                                                userId: widget.userId,
+                                              ),
+                                            ),
+                                          ),
+                                        if (!widget.account.isLoan)
+                                          PillButton(
+                                            label: 'Send',
+                                            icon: Icons.send_rounded,
+                                            onPressed: () => _openAction(
+                                              SendPage(
+                                                account: widget.account,
+                                                userId: widget.userId,
+                                              ),
+                                            ),
+                                          ),
+                                        PillButton(
+                                          label: 'Pay',
+                                          icon: Icons.receipt_long_rounded,
+                                          onPressed: () => _openAction(
+                                            PayPage(
+                                              account: widget.account,
+                                              userId: widget.userId,
+                                            ),
+                                          ),
+                                        ),
+                                        // Gold exchange button for treasure chest
+                                        if (widget.account.type == 'treasure_chest' && widget.userId != null)
+                                          PillButton(
+                                            label: 'Exchange',
+                                            icon: Icons.currency_exchange,
+                                            onPressed: () => _openAction(
+                                              GoldExchangePage(
+                                                treasureAccount: widget.account,
+                                                userId: widget.userId!,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (widget.account.isLoan)
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                          16, 8, 16, 0),
+                                      child: Text(
+                                        'Loan accounts can receive transfers and pay bills only.',
+                                        style: TextStyle(
+                                          color: colors.textMuted,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 18),
+                                  const Padding(
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 16),
+                                    child: SectionTitle('History'),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Expanded(
+                                    child: FutureBuilder<List<TransactionEntry>>(
+                                      future: _transactionsFuture,
+                                      builder: (context, snapshot) {
+                                        if (snapshot.connectionState !=
+                                            ConnectionState.done) {
+                                          return const Center(
+                                            child: CircularProgressIndicator(),
+                                          );
+                                        }
+                                        final items = snapshot.data ??
+                                            const <TransactionEntry>[];
+                                        if (items.isEmpty) {
+                                          return const Center(
+                                            child: Text('No transactions yet.'),
+                                          );
+                                        }
+                                        return ListView.separated(
+                                          padding: const EdgeInsets.fromLTRB(
+                                              16, 0, 16, 20),
+                                          itemCount: items.length,
+                                          separatorBuilder: (_, __) =>
+                                              const SizedBox(height: 10),
+                                          itemBuilder: (context, index) {
+                                            return TransactionRow(
+                                              entry: items[index],
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                ],
+                    if (weather != _WeatherType.none)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: WeatherOverlay(
+                            type: weather,
+                            windSpeed: windSpeed,
+                            highlight: weatherPalette.highlight,
+                            accent: weatherPalette.accent,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -2069,20 +2149,21 @@ class _GoldExchangePageState extends State<GoldExchangePage> {
   Widget build(BuildContext context) {
     final colors = BankTheme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Exchange Gold'),
+    return PageEntrance(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Exchange Gold'),
+          backgroundColor: colors.surface,
+          foregroundColor: colors.text,
+          elevation: 0,
+        ),
         backgroundColor: colors.surface,
-        foregroundColor: colors.text,
-        elevation: 0,
-      ),
-      backgroundColor: colors.surface,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               // Gold balance card
               Container(
                 padding: const EdgeInsets.all(20),
@@ -2275,7 +2356,8 @@ class _GoldExchangePageState extends State<GoldExchangePage> {
                         ),
                       ),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2365,10 +2447,7 @@ class _MoneyActionPageState extends State<MoneyActionPage> {
   }
 
   Environment _recordPeakDb(Environment env) {
-    final db = _noiseToDb(env.noise).toDouble();
-    if (db > _peakDb) {
-      _peakDb = db;
-    }
+    _peakDb = _noiseToDb(env.noise).toDouble();
     return env;
   }
 
@@ -2621,166 +2700,168 @@ class _MoneyActionPageState extends State<MoneyActionPage> {
             shakeIntensity: shakeIntensity,
             child: Theme(
               data: _buildTheme(colors),
-              child: Stack(
-                children: [
-                  Scaffold(
-                    body: Column(
-                      children: [
-                  RegionHeader(
-                    region: region,
-                    height: headerHeight,
-                    child: Row(
-                            children: [
-                              ButtonMotion(
-                                child: IconButton(
-                                  icon: const Icon(Icons.arrow_back_rounded),
-                                  onPressed: () => Navigator.of(context).pop(),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: SafeArea(
-                            top: false,
-                            child: Column(
+              child: PageEntrance(
+                child: Stack(
+                  children: [
+                    Scaffold(
+                      body: Column(
+                        children: [
+                          RegionHeader(
+                            region: region,
+                            height: headerHeight,
+                            child: Row(
                               children: [
-                                Expanded(
-                                  child: ListView(
-                                    padding:
-                                        const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                                    children: [
-                                      SectionTitle(widget.title),
-                                      const SizedBox(height: 12),
-                                      FieldLabel('From'),
-                                      FutureBuilder<List<Account>>(
-                                        future: _accountsFuture,
-                                        builder: (context, snapshot) {
-                                          if (snapshot.connectionState !=
-                                              ConnectionState.done) {
-                                            return const Padding(
-                                              padding: EdgeInsets.symmetric(
-                                                  vertical: 18),
-                                              child: Center(
-                                                child:
-                                                    CircularProgressIndicator(),
-                                              ),
-                                            );
-                                          }
-                                          final accounts =
-                                              snapshot.data ?? const <Account>[];
-                                          final eligible =
-                                              _eligibleFromAccounts(accounts);
-                                          _ensureDefaultFrom(eligible);
-                                          final selectedFrom = eligible.any(
-                                                  (account) =>
-                                                      account.id ==
-                                                      _fromAccountId)
-                                              ? _fromAccountId
-                                              : null;
-                                          if (eligible.isEmpty) {
-                                            return Text(
-                                              'No eligible source accounts.',
-                                              style: TextStyle(
-                                                color: BankTheme.of(context)
-                                                    .textMuted,
-                                              ),
-                                            );
-                                          }
-                                          return DropdownButtonFormField<String>(
-                                            key: ValueKey(
-                                              'from-${selectedFrom ?? 'none'}',
-                                            ),
-                                            initialValue: selectedFrom,
-                                            isExpanded: true,
-                                            icon: const Icon(
-                                              Icons.expand_more_rounded,
-                                            ),
-                                            decoration: const InputDecoration(),
-                                            items: eligible
-                                                .map(
-                                                  (account) => DropdownMenuItem(
-                                                    value: account.id,
-                                                    child: Row(
-                                                      children: [
-                                                        Expanded(
-                                                          child: Text(
-                                                            account.name,
-                                                            overflow: TextOverflow
-                                                                .ellipsis,
-                                                          ),
-                                                        ),
-                                                        Text(
-                                                          _formatAmount(
-                                                            account.balance,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                )
-                                                .toList(),
-                                            onChanged: (value) {
-                                              setState(() {
-                                                _fromAccountId = value;
-                                                if (value != null &&
-                                                    value == _toId) {
-                                                  _toId = null;
-                                                }
-                                              });
-                                            },
-                                          );
-                                        },
-                                      ),
-                                      const SizedBox(height: 16),
-                                      FieldLabel('Amount'),
-                                      TextField(
-                                        controller: _amountController,
-                                        keyboardType: const TextInputType
-                                            .numberWithOptions(
-                                          decimal: true,
-                                        ),
-                                        decoration: const InputDecoration(
-                                          hintText: 'Amount 0.00\$',
-                                        ),
-                                      ),
-                                      const SizedBox(height: 16),
-                                      FieldLabel(widget.toLabel),
-                                      _buildToField(),
-                                    ],
-                                  ),
-                                ),
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                                  child: PillButton(
-                                    label: _submitting
-                                        ? 'Working...'
-                                        : widget.submitLabel,
-                                    onPressed: _submitting ? null : _submit,
-                                    fullWidth: true,
-                                    primary: true,
+                                ButtonMotion(
+                                  child: IconButton(
+                                    icon: const Icon(Icons.arrow_back_rounded),
+                                    onPressed: () => Navigator.of(context).pop(),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (weather != _WeatherType.none)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: WeatherOverlay(
-                          type: weather,
-                          windSpeed: windSpeed,
-                          highlight: weatherPalette.highlight,
-                          accent: weatherPalette.accent,
-                        ),
+                          Expanded(
+                            child: SafeArea(
+                              top: false,
+                              child: Column(
+                                children: [
+                                  Expanded(
+                                    child: ListView(
+                                      padding:
+                                          const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                                      children: [
+                                        SectionTitle(widget.title),
+                                        const SizedBox(height: 12),
+                                        FieldLabel('From'),
+                                        FutureBuilder<List<Account>>(
+                                          future: _accountsFuture,
+                                          builder: (context, snapshot) {
+                                            if (snapshot.connectionState !=
+                                                ConnectionState.done) {
+                                              return const Padding(
+                                                padding: EdgeInsets.symmetric(
+                                                    vertical: 18),
+                                                child: Center(
+                                                  child:
+                                                      CircularProgressIndicator(),
+                                                ),
+                                              );
+                                            }
+                                            final accounts =
+                                                snapshot.data ?? const <Account>[];
+                                            final eligible =
+                                                _eligibleFromAccounts(accounts);
+                                            _ensureDefaultFrom(eligible);
+                                            final selectedFrom = eligible.any(
+                                                    (account) =>
+                                                        account.id ==
+                                                        _fromAccountId)
+                                                ? _fromAccountId
+                                                : null;
+                                            if (eligible.isEmpty) {
+                                              return Text(
+                                                'No eligible source accounts.',
+                                                style: TextStyle(
+                                                  color: BankTheme.of(context)
+                                                      .textMuted,
+                                                ),
+                                              );
+                                            }
+                                            return DropdownButtonFormField<String>(
+                                              key: ValueKey(
+                                                'from-${selectedFrom ?? 'none'}',
+                                              ),
+                                              initialValue: selectedFrom,
+                                              isExpanded: true,
+                                              icon: const Icon(
+                                                Icons.expand_more_rounded,
+                                              ),
+                                              decoration: const InputDecoration(),
+                                              items: eligible
+                                                  .map(
+                                                    (account) => DropdownMenuItem(
+                                                      value: account.id,
+                                                      child: Row(
+                                                        children: [
+                                                          Expanded(
+                                                            child: Text(
+                                                              account.name,
+                                                              overflow: TextOverflow
+                                                                  .ellipsis,
+                                                            ),
+                                                          ),
+                                                          Text(
+                                                            _formatAmount(
+                                                              account.balance,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  )
+                                                  .toList(),
+                                              onChanged: (value) {
+                                                setState(() {
+                                                  _fromAccountId = value;
+                                                  if (value != null &&
+                                                      value == _toId) {
+                                                    _toId = null;
+                                                  }
+                                                });
+                                              },
+                                            );
+                                          },
+                                        ),
+                                        const SizedBox(height: 16),
+                                        FieldLabel('Amount'),
+                                        TextField(
+                                          controller: _amountController,
+                                          keyboardType: const TextInputType
+                                              .numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                          decoration: const InputDecoration(
+                                            hintText: 'Amount 0.00\$',
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        FieldLabel(widget.toLabel),
+                                        _buildToField(),
+                                      ],
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding:
+                                        const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                                    child: PillButton(
+                                      label: _submitting
+                                          ? 'Working...'
+                                          : widget.submitLabel,
+                                      onPressed: _submitting ? null : _submit,
+                                      fullWidth: true,
+                                      primary: true,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                ],
+                    if (weather != _WeatherType.none)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: WeatherOverlay(
+                            type: weather,
+                            windSpeed: windSpeed,
+                            highlight: weatherPalette.highlight,
+                            accent: weatherPalette.accent,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -2865,6 +2946,23 @@ class AccountCard extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: Icon(Icons.savings, color: Colors.amber.shade700, size: 24),
+                ),
+              if (account.isLoan)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade100,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.credit_card,
+                      color: Colors.red.shade600,
+                      size: 16,
+                    ),
+                  ),
                 ),
               Expanded(
                 child: Text(

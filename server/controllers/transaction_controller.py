@@ -109,9 +109,7 @@ def send_money(request: SendMoneyRequest, db: Session = Depends(get_db)):
 def find_users(search: Optional[str] = Query(None), db: Session = Depends(get_db)):
     """Search for users."""
     service = UserService(db)
-    if not search:
-        return []
-    users = service.find_users(search)
+    users = service.find_users(search or "")
     return [user.to_dict() for user in users]
 
 

@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "2D top-down treasure hunting game with adaptive banking integration",
   "scripts": {
-    "start": "cd server && npm start",
-    "dev": "cd server && npm run dev",
-    "install-deps": "cd server && npm install"
+    "start": "python server/main.py",
+    "dev": "python -m uvicorn main:socket_app --reload --app-dir server --host 0.0.0.0 --port 3000",
+    "install-deps": "pip install -r server/requirements.txt"
   },
   "keywords": ["game", "treasure-hunt", "hackathon"],
   "license": "MIT"

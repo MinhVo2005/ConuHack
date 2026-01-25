@@ -13,7 +13,7 @@ class TestUserService:
 
         assert user.id == "new_user"
         assert user.name == "New User"
-        assert len(user.accounts) == 3
+        assert len(user.accounts) == 4
 
     def test_create_user_with_default_accounts(self, db_session):
         """Test that user is created with correct default accounts."""
@@ -25,10 +25,12 @@ class TestUserService:
         assert "checking" in account_types
         assert "savings" in account_types
         assert "treasure_chest" in account_types
+        assert "credit_card" in account_types
 
         assert account_types["checking"].balance == 1000
         assert account_types["savings"].balance == 500
         assert account_types["treasure_chest"].balance == 0
+        assert account_types["credit_card"].balance == 0
 
     def test_create_user_duplicate(self, db_session, sample_user):
         """Test creating duplicate user raises error."""
@@ -63,7 +65,7 @@ class TestUserService:
         user = service.get_user_with_accounts(sample_user.id)
 
         assert user.id == sample_user.id
-        assert len(user.accounts) == 3
+        assert len(user.accounts) == 4
 
     def test_get_or_create_user_existing(self, db_session, sample_user):
         """Test get_or_create with existing user."""
@@ -82,7 +84,7 @@ class TestUserService:
         assert created is True
         assert user.id == "brand_new_user"
         assert user.name == "Brand New"
-        assert len(user.accounts) == 3
+        assert len(user.accounts) == 4
 
     def test_update_user_name(self, db_session, sample_user):
         """Test updating user name."""
