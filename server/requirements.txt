@@ -6,3 +6,5 @@ pydantic
 python-multipart
 pytest
 httpx
+elevenlabs
+python-dotenv
