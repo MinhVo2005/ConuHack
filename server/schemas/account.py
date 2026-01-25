@@ -5,7 +5,7 @@ from datetime import datetime
 
 class AccountCreate(BaseModel):
     user_id: str
-    type: Literal["checking", "savings", "treasure_chest"]
+    type: Literal["checking", "savings", "treasure_chest", "credit_card"]
     name: str
     balance: float = 0
 
@@ -16,6 +16,7 @@ class AccountResponse(BaseModel):
     type: str
     name: str
     balance: float
+    is_loan: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

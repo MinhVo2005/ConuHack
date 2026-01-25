@@ -67,24 +67,25 @@ class _LoginScreenState extends State<LoginScreen> {
     final colors = BankTheme.of(context);
 
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              colors.surface,
-              colors.surfaceMuted,
-            ],
+      body: PageEntrance(
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                colors.surface,
+                colors.surfaceMuted,
+              ],
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
                   // Logo/Title
                   Icon(
                     Icons.account_balance,
@@ -209,7 +210,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       fontStyle: FontStyle.italic,
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

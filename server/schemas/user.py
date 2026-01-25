@@ -26,6 +26,7 @@ class AccountInUser(BaseModel):
     type: str
     name: str
     balance: float
+    is_loan: bool = False
 
     class Config:
         from_attributes = True

@@ -29,9 +29,9 @@ class TestAccountService:
         service = AccountService(db_session)
         accounts = service.get_accounts_by_user_id(sample_user.id)
 
-        assert len(accounts) == 3
+        assert len(accounts) == 4
         types = {a.type for a in accounts}
-        assert types == {"checking", "savings", "treasure_chest"}
+        assert types == {"checking", "savings", "treasure_chest", "credit_card"}
 
     def test_get_account_by_type(self, db_session, sample_user):
         """Test getting account by type."""
@@ -130,6 +130,6 @@ class TestAccountService:
         service = AccountService(db_session)
         summary = service.get_account_summary(sample_user.id)
 
-        assert len(summary["accounts"]) == 3
+        assert len(summary["accounts"]) == 4
         assert summary["total_cash"] == 1500  # checking + savings
         assert summary["gold_bars"] == 0

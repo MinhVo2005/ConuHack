@@ -15,6 +15,7 @@ When a user is created, they automatically get:
 | checking | $1,000 | Daily transactions |
 | savings | $500 | Long-term storage |
 | treasure_chest | 0 gold bars | Game rewards |
+| credit_card | $0 | Charges from game events |
 
 ## Gold Exchange Rate
 

@@ -81,7 +81,7 @@ class TestUserController:
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == "get_user"
-        assert len(data["accounts"]) == 3
+        assert len(data["accounts"]) == 4
 
     def test_get_user_not_found(self, client):
         """Test getting non-existent user."""
@@ -141,7 +141,7 @@ class TestAccountController:
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 3
+        assert len(data) == 4
 
     def test_get_account_summary(self, client):
         """Test getting account summary."""

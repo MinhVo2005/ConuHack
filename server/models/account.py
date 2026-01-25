@@ -16,7 +16,10 @@ class Account(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     __table_args__ = (
-        CheckConstraint("type IN ('checking', 'savings', 'treasure_chest')", name="valid_account_type"),
+        CheckConstraint(
+            "type IN ('checking', 'savings', 'treasure_chest', 'credit_card')",
+            name="valid_account_type"
+        ),
     )
 
     # Relationships
@@ -39,6 +42,11 @@ class Account(Base):
             "type": self.type,
             "name": self.name,
             "balance": self.balance,
+            "is_loan": self.is_loan,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
+
+    @property
+    def is_loan(self):
+        return self.type == "credit_card"
