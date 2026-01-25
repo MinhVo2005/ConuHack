@@ -312,12 +312,31 @@ async def updateGold(sid, data):
 
 @sio.event
 async def environmentUpdate(sid, data):
-    """Handle environment update from game."""
+    """Handle environment update from game and broadcast to all clients."""
     player_id = data.get("playerId")
     environment = data.get("environment", {})
 
-    # Just acknowledge, environment is managed by the game client
-    await sio.emit("environmentAck", {"received": True}, room=sid)
+    db = get_db_session()
+    try:
+        environment_service = EnvironmentService(db)
+        env = environment_service.update_environment(
+            temperature=environment.get("temperature"),
+            humidity=environment.get("humidity"),
+            wind_speed=environment.get("wind_speed") or environment.get("windSpeed"),
+            noise=environment.get("noise"),
+            brightness=environment.get("brightness")
+        )
+        hints = environment_service.get_adaptation_hints()
+
+        # Broadcast to all connected clients (including Flutter app)
+        await sio.emit("environmentUpdated", {
+            "environment": env.to_dict(),
+            "hints": hints
+        })
+    except Exception as e:
+        await sio.emit("error", {"message": str(e)}, room=sid)
+    finally:
+        db.close()
 
 
 @app.on_event("startup")

@@ -8,24 +8,7 @@ import 'package:flutter/scheduler.dart';
 
 import 'api.dart';
 import 'models.dart';
-
-class BankWorldApp extends StatelessWidget {
-  const BankWorldApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = BankColors.light();
-    return BankTheme(
-      colors: colors,
-      child: MaterialApp(
-        title: 'BankWorld MVP',
-        debugShowCheckedModeBanner: false,
-        theme: _buildTheme(colors),
-        home: const HomeAccountsPage(),
-      ),
-    );
-  }
-}
+import 'backend_service.dart';
 
 ThemeData _buildTheme(BankColors colors) {
   return ThemeData(
@@ -1071,7 +1054,9 @@ class _DashboardChip extends StatelessWidget {
 }
 
 class HomeAccountsPage extends StatefulWidget {
-  const HomeAccountsPage({super.key});
+  final String? userId;
+
+  const HomeAccountsPage({super.key, this.userId});
 
   @override
   State<HomeAccountsPage> createState() => _HomeAccountsPageState();
@@ -1082,16 +1067,55 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
   late Future<List<Account>> _accountsFuture;
   double _peakDb = 0;
   Timer? _environmentTimer;
+  Environment? _liveEnvironment; // For Socket.IO updates
+
+  bool get _useBackend => widget.userId != null;
 
   @override
   void initState() {
     super.initState();
-    _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
-    _accountsFuture = Api.getAccounts();
+    _initData();
+
+    // Set up Socket.IO environment listener if using backend
+    if (_useBackend) {
+      BackendService.connect(
+        userId: widget.userId!,
+        onEnvironmentUpdate: _onEnvironmentUpdate,
+      );
+    }
+
+    // Fallback polling for environment (less frequent if using Socket.IO)
     _environmentTimer = Timer.periodic(
-      const Duration(seconds: 1),
+      Duration(seconds: _useBackend ? 5 : 1),
       (_) => _refreshEnvironment(),
     );
+  }
+
+  void _initData() {
+    if (_useBackend) {
+      _environmentFuture = _fetchBackendEnvironment();
+      _accountsFuture = BackendService.getAccounts(widget.userId!);
+    } else {
+      _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+      _accountsFuture = Api.getAccounts();
+    }
+  }
+
+  Future<Environment> _fetchBackendEnvironment() async {
+    final env = await BackendService.getEnvironment();
+    if (env != null) {
+      return _recordPeakDb(env);
+    }
+    // Fallback to mock if backend fails
+    return Api.getEnvironment().then(_recordPeakDb);
+  }
+
+  void _onEnvironmentUpdate(Environment env) {
+    if (!mounted) return;
+    setState(() {
+      _liveEnvironment = env;
+      _recordPeakDb(env);
+    });
   }
 
   Environment _recordPeakDb(Environment env) {
@@ -1104,14 +1128,25 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
 
   Future<void> _refreshAccounts() async {
     setState(() {
-      _accountsFuture = Api.getAccounts();
+      if (_useBackend) {
+        _accountsFuture = BackendService.getAccounts(widget.userId!);
+      } else {
+        _accountsFuture = Api.getAccounts();
+      }
     });
   }
 
   void _refreshEnvironment() {
     if (!mounted) return;
+    // Skip refresh if we have live Socket.IO updates
+    if (_useBackend && _liveEnvironment != null) return;
+
     setState(() {
-      _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+      if (_useBackend) {
+        _environmentFuture = _fetchBackendEnvironment();
+      } else {
+        _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+      }
     });
   }
 
@@ -1124,7 +1159,10 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
   Future<void> _openAccount(Account account) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AccountDetailPage(account: account),
+        builder: (_) => AccountDetailPage(
+          account: account,
+          userId: widget.userId,
+        ),
       ),
     );
     await _refreshAccounts();
@@ -1298,7 +1336,8 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
     return FutureBuilder<Environment>(
       future: _environmentFuture,
       builder: (context, snapshot) {
-        final environment = snapshot.data;
+        // Prefer live Socket.IO environment over future data
+        final environment = _liveEnvironment ?? snapshot.data;
         final region = environment?.region ?? Region.darkCave;
         final colors = BankColors.forEnvironment(
           region: region,
@@ -1458,10 +1497,12 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
 
 class AccountDetailPage extends StatefulWidget {
   final Account account;
+  final String? userId;
 
   const AccountDetailPage({
     super.key,
     required this.account,
+    this.userId,
   });
 
   @override
@@ -1475,15 +1516,29 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
   double _peakDb = 0;
   Timer? _environmentTimer;
 
+  bool get _useBackend => widget.userId != null;
+
   @override
   void initState() {
     super.initState();
-    _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+    if (_useBackend) {
+      _environmentFuture = _fetchBackendEnvironment();
+    } else {
+      _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+    }
     _environmentTimer = Timer.periodic(
-      const Duration(seconds: 1),
+      Duration(seconds: _useBackend ? 5 : 1),
       (_) => _refreshEnvironment(),
     );
     _refresh();
+  }
+
+  Future<Environment> _fetchBackendEnvironment() async {
+    final env = await BackendService.getEnvironment();
+    if (env != null) {
+      return _recordPeakDb(env);
+    }
+    return Api.getEnvironment().then(_recordPeakDb);
   }
 
   Environment _recordPeakDb(Environment env) {
@@ -1495,14 +1550,24 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
   }
 
   void _refresh() {
-    _accountFuture = Api.getAccount(widget.account.id);
-    _transactionsFuture = Api.getTransactions(widget.account.id);
+    if (_useBackend) {
+      // Use backend - account.id is the integer ID from backend
+      _accountFuture = Future.value(widget.account);
+      _transactionsFuture = BackendService.getAccountTransactions(widget.account.id);
+    } else {
+      _accountFuture = Api.getAccount(widget.account.id);
+      _transactionsFuture = Api.getTransactions(widget.account.id);
+    }
   }
 
   void _refreshEnvironment() {
     if (!mounted) return;
     setState(() {
-      _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+      if (_useBackend) {
+        _environmentFuture = _fetchBackendEnvironment();
+      } else {
+        _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+      }
     });
   }
 
@@ -1669,7 +1734,9 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
                                           icon: Icons.swap_horiz_rounded,
                                           onPressed: () => _openAction(
                                             TransferPage(
-                                                account: widget.account),
+                                              account: widget.account,
+                                              userId: widget.userId,
+                                            ),
                                           ),
                                         ),
                                       if (!widget.account.isLoan)
@@ -1677,16 +1744,34 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
                                           label: 'Send',
                                           icon: Icons.send_rounded,
                                           onPressed: () => _openAction(
-                                            SendPage(account: widget.account),
+                                            SendPage(
+                                              account: widget.account,
+                                              userId: widget.userId,
+                                            ),
                                           ),
                                         ),
                                       PillButton(
                                         label: 'Pay',
                                         icon: Icons.receipt_long_rounded,
                                         onPressed: () => _openAction(
-                                          PayPage(account: widget.account),
+                                          PayPage(
+                                            account: widget.account,
+                                            userId: widget.userId,
+                                          ),
                                         ),
                                       ),
+                                      // Gold exchange button for treasure chest
+                                      if (widget.account.type == 'treasure_chest' && widget.userId != null)
+                                        PillButton(
+                                          label: 'Exchange',
+                                          icon: Icons.currency_exchange,
+                                          onPressed: () => _openAction(
+                                            GoldExchangePage(
+                                              treasureAccount: widget.account,
+                                              userId: widget.userId!,
+                                            ),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -1775,32 +1860,60 @@ Future<void> _submitTransfer({
   required String fromAccountId,
   required String toId,
   required int amount,
-}) {
-  return Api.transfer(
-    fromAccountId: fromAccountId,
-    toAccountId: toId,
-    amount: amount,
-  );
+  String? userId,
+}) async {
+  if (userId != null) {
+    // Use backend
+    final fromId = int.tryParse(fromAccountId);
+    final toIdInt = int.tryParse(toId);
+    if (fromId != null && toIdInt != null) {
+      await BackendService.transfer(
+        fromAccountId: fromId,
+        toAccountId: toIdInt,
+        amount: amount.toDouble(),
+      );
+    }
+  } else {
+    // Use mock API
+    await Api.transfer(
+      fromAccountId: fromAccountId,
+      toAccountId: toId,
+      amount: amount,
+    );
+  }
 }
 
 Future<void> _submitSend({
   required String fromAccountId,
   required String toId,
   required int amount,
-}) {
-  return Api.send(
-    fromAccountId: fromAccountId,
-    toUserId: toId,
-    amount: amount,
-  );
+  String? userId,
+}) async {
+  if (userId != null) {
+    // Use backend - send money to another user
+    await BackendService.sendMoney(
+      fromUserId: userId,
+      toUserId: toId,
+      amount: amount.toDouble(),
+    );
+  } else {
+    await Api.send(
+      fromAccountId: fromAccountId,
+      toUserId: toId,
+      amount: amount,
+    );
+  }
 }
 
 Future<void> _submitPay({
   required String fromAccountId,
   required String toId,
   required int amount,
-}) {
-  return Api.pay(
+  String? userId,
+}) async {
+  // Pay functionality - for now just use mock API
+  // Backend doesn't have payee concept yet
+  await Api.pay(
     fromAccountId: fromAccountId,
     toPayeeId: toId,
     amount: amount,
@@ -1809,10 +1922,12 @@ Future<void> _submitPay({
 
 class TransferPage extends StatelessWidget {
   final Account? account;
+  final String? userId;
 
   const TransferPage({
     super.key,
     this.account,
+    this.userId,
   });
 
   @override
@@ -1824,16 +1939,19 @@ class TransferPage extends StatelessWidget {
       recipientType: RecipientType.account,
       toLabel: 'To',
       onSubmit: _submitTransfer,
+      userId: userId,
     );
   }
 }
 
 class SendPage extends StatelessWidget {
   final Account? account;
+  final String? userId;
 
   const SendPage({
     super.key,
     this.account,
+    this.userId,
   });
 
   @override
@@ -1845,16 +1963,19 @@ class SendPage extends StatelessWidget {
       recipientType: RecipientType.user,
       toLabel: 'To',
       onSubmit: _submitSend,
+      userId: userId,
     );
   }
 }
 
 class PayPage extends StatelessWidget {
   final Account? account;
+  final String? userId;
 
   const PayPage({
     super.key,
     this.account,
+    this.userId,
   });
 
   @override
@@ -1866,6 +1987,298 @@ class PayPage extends StatelessWidget {
       recipientType: RecipientType.payee,
       toLabel: 'Payee',
       onSubmit: _submitPay,
+      userId: userId,
+    );
+  }
+}
+
+class GoldExchangePage extends StatefulWidget {
+  final Account treasureAccount;
+  final String userId;
+
+  const GoldExchangePage({
+    super.key,
+    required this.treasureAccount,
+    required this.userId,
+  });
+
+  @override
+  State<GoldExchangePage> createState() => _GoldExchangePageState();
+}
+
+class _GoldExchangePageState extends State<GoldExchangePage> {
+  int _barsToExchange = 1;
+  String _destinationType = 'checking';
+  bool _isLoading = false;
+  int _goldRate = 7000;
+  late Future<List<Account>> _accountsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGoldRate();
+    _accountsFuture = BackendService.getAccounts(widget.userId);
+  }
+
+  Future<void> _loadGoldRate() async {
+    final rate = await BackendService.getGoldRate();
+    if (mounted) {
+      setState(() => _goldRate = rate);
+    }
+  }
+
+  int get _maxBars => widget.treasureAccount.balance;
+  int get _cashValue => _barsToExchange * _goldRate;
+
+  Future<void> _exchange() async {
+    if (_barsToExchange <= 0 || _barsToExchange > _maxBars) return;
+
+    setState(() => _isLoading = true);
+
+    final result = await BackendService.exchangeGold(
+      userId: widget.userId,
+      bars: _barsToExchange,
+      toAccountType: _destinationType,
+    );
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+
+      if (result != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Exchanged $_barsToExchange gold bar${_barsToExchange > 1 ? 's' : ''} for \$${_cashValue.toStringAsFixed(0)}!',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pop(true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Exchange failed. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = BankTheme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Exchange Gold'),
+        backgroundColor: colors.surface,
+        foregroundColor: colors.text,
+        elevation: 0,
+      ),
+      backgroundColor: colors.surface,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Gold balance card
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.amber.shade600, Colors.amber.shade800],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.amber.withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.savings, color: Colors.white, size: 48),
+                    const SizedBox(height: 12),
+                    Text(
+                      '${widget.treasureAccount.balance} Gold Bars',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Rate: \$$_goldRate per bar',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // Bars to exchange
+              Text(
+                'Bars to Exchange',
+                style: TextStyle(
+                  color: colors.text,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: _barsToExchange > 1
+                        ? () => setState(() => _barsToExchange--)
+                        : null,
+                    icon: Icon(Icons.remove_circle, color: colors.text),
+                  ),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: colors.divider),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$_barsToExchange',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: colors.text,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _barsToExchange < _maxBars
+                        ? () => setState(() => _barsToExchange++)
+                        : null,
+                    icon: Icon(Icons.add_circle, color: colors.text),
+                  ),
+                ],
+              ),
+              if (_maxBars > 1) ...[
+                const SizedBox(height: 8),
+                Slider(
+                  value: _barsToExchange.toDouble(),
+                  min: 1,
+                  max: _maxBars.toDouble(),
+                  divisions: _maxBars > 1 ? _maxBars - 1 : 1,
+                  onChanged: (v) => setState(() => _barsToExchange = v.round()),
+                ),
+              ],
+              const SizedBox(height: 24),
+
+              // Destination account
+              Text(
+                'Deposit To',
+                style: TextStyle(
+                  color: colors.text,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              FutureBuilder<List<Account>>(
+                future: _accountsFuture,
+                builder: (context, snapshot) {
+                  final accounts = snapshot.data ?? [];
+                  final validAccounts = accounts
+                      .where((a) => a.type == 'checking' || a.type == 'savings')
+                      .toList();
+
+                  return Wrap(
+                    spacing: 12,
+                    children: validAccounts.map((account) {
+                      final isSelected = _destinationType == account.type;
+                      return ChoiceChip(
+                        label: Text(account.name),
+                        selected: isSelected,
+                        onSelected: (_) {
+                          setState(() => _destinationType = account.type ?? 'checking');
+                        },
+                        selectedColor: colors.text.withOpacity(0.2),
+                        labelStyle: TextStyle(
+                          color: isSelected ? colors.text : colors.textMuted,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+              const Spacer(),
+
+              // Summary
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: colors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'You will receive',
+                      style: TextStyle(color: colors.textMuted, fontSize: 16),
+                    ),
+                    Text(
+                      '\$${_cashValue.toStringAsFixed(0)}',
+                      style: TextStyle(
+                        color: colors.text,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Exchange button
+              ElevatedButton(
+                onPressed: _isLoading || _maxBars == 0 ? null : _exchange,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        _maxBars == 0 ? 'No Gold to Exchange' : 'Exchange Gold',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1874,6 +2287,7 @@ typedef PaymentSubmit = Future<void> Function({
   required String fromAccountId,
   required String toId,
   required int amount,
+  String? userId,
 });
 
 class MoneyActionPage extends StatefulWidget {
@@ -1883,6 +2297,7 @@ class MoneyActionPage extends StatefulWidget {
   final RecipientType recipientType;
   final String toLabel;
   final PaymentSubmit onSubmit;
+  final String? userId;
 
   const MoneyActionPage({
     super.key,
@@ -1892,6 +2307,7 @@ class MoneyActionPage extends StatefulWidget {
     required this.recipientType,
     required this.toLabel,
     required this.onSubmit,
+    this.userId,
   });
 
   @override
@@ -1911,22 +2327,41 @@ class _MoneyActionPageState extends State<MoneyActionPage> {
   double _peakDb = 0;
   Timer? _environmentTimer;
 
+  bool get _useBackend => widget.userId != null;
+
   @override
   void initState() {
     super.initState();
-    _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+    if (_useBackend) {
+      _environmentFuture = _fetchBackendEnvironment();
+      _accountsFuture = BackendService.getAccounts(widget.userId!);
+    } else {
+      _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+      _accountsFuture = Api.getAccounts();
+    }
     _environmentTimer = Timer.periodic(
-      const Duration(seconds: 1),
+      Duration(seconds: _useBackend ? 5 : 1),
       (_) => _refreshEnvironment(),
     );
-    _accountsFuture = Api.getAccounts();
     if (widget.recipientType == RecipientType.user) {
-      _usersFuture = Api.getUsers();
+      if (_useBackend) {
+        _usersFuture = BackendService.findUsers('');
+      } else {
+        _usersFuture = Api.getUsers();
+      }
     }
     if (widget.recipientType == RecipientType.payee) {
       _payeesFuture = Api.getPayees();
     }
     _fromAccountId = widget.fromAccount?.id;
+  }
+
+  Future<Environment> _fetchBackendEnvironment() async {
+    final env = await BackendService.getEnvironment();
+    if (env != null) {
+      return _recordPeakDb(env);
+    }
+    return Api.getEnvironment().then(_recordPeakDb);
   }
 
   Environment _recordPeakDb(Environment env) {
@@ -1940,7 +2375,11 @@ class _MoneyActionPageState extends State<MoneyActionPage> {
   void _refreshEnvironment() {
     if (!mounted) return;
     setState(() {
-      _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+      if (_useBackend) {
+        _environmentFuture = _fetchBackendEnvironment();
+      } else {
+        _environmentFuture = Api.getEnvironment().then(_recordPeakDb);
+      }
     });
   }
 
@@ -2139,7 +2578,12 @@ class _MoneyActionPageState extends State<MoneyActionPage> {
     }
 
     setState(() => _submitting = true);
-    await widget.onSubmit(fromAccountId: fromId, toId: toId, amount: amount);
+    await widget.onSubmit(
+      fromAccountId: fromId,
+      toId: toId,
+      amount: amount,
+      userId: widget.userId,
+    );
     if (!mounted) return;
     setState(() => _submitting = false);
     Navigator.of(context).pop(true);
@@ -2417,6 +2861,11 @@ class AccountCard extends StatelessWidget {
           ),
           child: Row(
             children: [
+              if (account.type == 'treasure_chest')
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Icon(Icons.savings, color: Colors.amber.shade700, size: 24),
+                ),
               Expanded(
                 child: Text(
                   account.name,
@@ -2427,11 +2876,15 @@ class AccountCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Text(
-                _formatAmount(account.balance),
+                account.type == 'treasure_chest'
+                    ? '${account.balance} bars'
+                    : _formatAmount(account.balance),
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: colors.textMuted,
+                  color: account.type == 'treasure_chest'
+                      ? Colors.amber.shade700
+                      : colors.textMuted,
                 ),
               ),
               const SizedBox(width: 6),

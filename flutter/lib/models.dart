@@ -101,25 +101,39 @@ class Account {
   final String name;
   final int balance;
   final bool isLoan;
+  final String? type; // checking, savings, treasure_chest
 
   const Account({
     required this.id,
     required this.name,
     required this.balance,
     this.isLoan = false,
+    this.type,
   });
+
+  factory Account.fromJson(Map<String, dynamic> json) {
+    return Account(
+      id: json['id']?.toString() ?? '',
+      name: json['name'] ?? '',
+      balance: (json['balance'] as num?)?.toInt() ?? 0,
+      isLoan: json['is_loan'] ?? false,
+      type: json['type'],
+    );
+  }
 
   Account copyWith({
     String? id,
     String? name,
     int? balance,
     bool? isLoan,
+    String? type,
   }) {
     return Account(
       id: id ?? this.id,
       name: name ?? this.name,
       balance: balance ?? this.balance,
       isLoan: isLoan ?? this.isLoan,
+      type: type ?? this.type,
     );
   }
 }
@@ -132,6 +146,13 @@ class UserProfile {
     required this.id,
     required this.name,
   });
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) {
+    return UserProfile(
+      id: json['id'] ?? '',
+      name: json['name'] ?? '',
+    );
+  }
 }
 
 class TransactionEntry {
@@ -139,13 +160,66 @@ class TransactionEntry {
   final String description;
   final int amount;
   final bool isDebit;
+  final String? type;
+  final int? fromAccountId;
+  final int? toAccountId;
 
   const TransactionEntry({
     required this.id,
     required this.description,
     required this.amount,
     required this.isDebit,
+    this.type,
+    this.fromAccountId,
+    this.toAccountId,
   });
+
+  factory TransactionEntry.fromJson(Map<String, dynamic> json, {int? forAccountId}) {
+    final type = json['type'] ?? '';
+    final fromId = json['from_account_id'] as int?;
+    final toId = json['to_account_id'] as int?;
+
+    // Determine if this is a debit based on transaction type and account context
+    bool isDebit;
+    if (forAccountId != null) {
+      // If we know which account we're viewing, check if money left that account
+      isDebit = fromId == forAccountId;
+    } else {
+      // Fallback: use transaction type
+      isDebit = type == 'withdrawal' || type == 'transfer';
+    }
+
+    // Generate description if not provided
+    String description = json['description'] ?? '';
+    if (description.isEmpty) {
+      switch (type) {
+        case 'transfer':
+          description = isDebit ? 'Transfer out' : 'Transfer in';
+          break;
+        case 'deposit':
+          description = 'Deposit';
+          break;
+        case 'withdrawal':
+          description = 'Withdrawal';
+          break;
+        case 'gold_exchange':
+          description = 'Gold Exchange';
+          break;
+        default:
+          description = 'Transaction';
+      }
+    }
+
+    return TransactionEntry(
+      id: json['id']?.toString() ?? '',
+      description: description,
+      amount: ((json['amount'] as num?)?.abs().toInt()) ?? 0,
+      isDebit: isDebit,
+      type: type,
+      fromAccountId: fromId,
+      toAccountId: toId,
+    );
+  }
 }
 
 class Payee {
@@ -156,4 +230,11 @@ class Payee {
     required this.id,
     required this.name,
   });
+
+  factory Payee.fromJson(Map<String, dynamic> json) {
+    return Payee(
+      id: json['id'] ?? '',
+      name: json['name'] ?? '',
+    );
+  }
 }
