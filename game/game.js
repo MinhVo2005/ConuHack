@@ -34,6 +34,9 @@ class Game {
     this.flashType = null;
     this.flashTimer = 0;
 
+    // Current environment for compass
+    this.currentEnv = null;
+
     // Socket connection
     this.socket = null;
     this.connected = false;
@@ -110,6 +113,7 @@ class Game {
   update() {
     // Get current environment
     const env = this.map.getEnvironmentAt(this.player.x, this.player.y);
+    this.currentEnv = env;
 
     // Update player
     const playerResult = this.player.update(this.mouseX, this.mouseY, this.map, env);
@@ -200,6 +204,9 @@ class Game {
 
     // Draw connection status
     this.drawConnectionStatus();
+
+    // Draw wind compass
+    this.drawCompass();
   }
 
   drawCursor() {
@@ -232,6 +239,138 @@ class Game {
     this.ctx.textAlign = 'right';
     this.ctx.fillText(status, CANVAS_WIDTH - 10, 20);
     this.ctx.textAlign = 'left';
+  }
+
+  drawCompass() {
+    const ctx = this.ctx;
+    const compassX = CANVAS_WIDTH - 55;
+    const compassY = 70;
+    const radius = 35;
+
+    // Get wind direction from current environment
+    let windDir = { x: 0, y: -1 }; // Default: north
+    if (this.currentEnv && this.currentEnv.windDirection) {
+      windDir = this.currentEnv.windDirection;
+    } else if (this.currentEnv && this.currentEnv.windSpeed > 0) {
+      // For zones with wind but no specific direction, use default
+      windDir = { x: 0, y: -1 };
+    }
+
+    // Background circle
+    ctx.beginPath();
+    ctx.arc(compassX, compassY, radius + 5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fill();
+
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(compassX, compassY, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = '#8b7355';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Inner circle
+    ctx.beginPath();
+    ctx.arc(compassX, compassY, radius - 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#2c2c2c';
+    ctx.fill();
+    ctx.strokeStyle = '#5a4a3a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Cardinal direction markers
+    ctx.fillStyle = '#aaa';
+    ctx.font = 'bold 10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('N', compassX, compassY - radius + 12);
+    ctx.fillText('S', compassX, compassY + radius - 12);
+    ctx.fillText('E', compassX + radius - 12, compassY);
+    ctx.fillText('W', compassX - radius + 12, compassY);
+
+    // Small tick marks
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i * Math.PI) / 4;
+      const innerR = radius - 8;
+      const outerR = radius - 5;
+      ctx.beginPath();
+      ctx.moveTo(compassX + Math.cos(angle) * innerR, compassY + Math.sin(angle) * innerR);
+      ctx.lineTo(compassX + Math.cos(angle) * outerR, compassY + Math.sin(angle) * outerR);
+      ctx.stroke();
+    }
+
+    // Wind direction arrow
+    const arrowAngle = Math.atan2(windDir.y, windDir.x);
+    const arrowLength = radius - 10;
+
+    // Arrow shaft
+    ctx.save();
+    ctx.translate(compassX, compassY);
+    ctx.rotate(arrowAngle);
+
+    // Arrow body (gradient for 3D effect)
+    const gradient = ctx.createLinearGradient(-arrowLength * 0.6, 0, arrowLength, 0);
+    gradient.addColorStop(0, '#4a90d9');
+    gradient.addColorStop(0.5, '#6ab0ff');
+    gradient.addColorStop(1, '#2a70b9');
+
+    // Arrow tail (opposite direction)
+    ctx.beginPath();
+    ctx.moveTo(-arrowLength * 0.6, 0);
+    ctx.lineTo(0, -4);
+    ctx.lineTo(0, 4);
+    ctx.closePath();
+    ctx.fillStyle = '#888';
+    ctx.fill();
+
+    // Arrow shaft
+    ctx.beginPath();
+    ctx.moveTo(0, -3);
+    ctx.lineTo(arrowLength - 10, -3);
+    ctx.lineTo(arrowLength - 10, 3);
+    ctx.lineTo(0, 3);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    // Arrowhead
+    ctx.beginPath();
+    ctx.moveTo(arrowLength, 0);
+    ctx.lineTo(arrowLength - 12, -8);
+    ctx.lineTo(arrowLength - 8, 0);
+    ctx.lineTo(arrowLength - 12, 8);
+    ctx.closePath();
+    ctx.fillStyle = '#5dade2';
+    ctx.fill();
+    ctx.strokeStyle = '#2980b9';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Center pivot
+    ctx.beginPath();
+    ctx.arc(compassX, compassY, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#8b7355';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(compassX, compassY, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#5a4a3a';
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#aaa';
+    ctx.font = '10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('WIND', compassX, compassY + radius + 15);
+
+    // Wind speed indicator
+    if (this.currentEnv) {
+      ctx.fillStyle = '#6ab0ff';
+      ctx.fillText(this.currentEnv.windSpeed + ' km/h', compassX, compassY + radius + 26);
+    }
   }
 
   updateGoldDisplay() {

@@ -15,9 +15,50 @@ class Player {
     this.animFrame = 0;
     this.animTimer = 0;
     this.facing = 'down';
+
+    // Freeze effect (arctic zone)
+    this.isFrozen = false;
+    this.freezeTimer = 0;
+    this.freezeCheckTimer = 0;
+    this.freezeAlpha = 0; // For ice visual fade in/out
   }
 
   update(targetX, targetY, map, currentEnv) {
+    // Handle freeze effect in arctic zone
+    if (currentEnv && currentEnv.type === ENV_TYPES.ARCTIC) {
+      // Check for freeze every second (~60 frames)
+      this.freezeCheckTimer++;
+      if (this.freezeCheckTimer >= 60 && !this.isFrozen) {
+        this.freezeCheckTimer = 0;
+        // 10% chance to freeze
+        if (Math.random() < 0.1) {
+          this.isFrozen = true;
+          // Freeze for 2-3 seconds (120-180 frames)
+          this.freezeTimer = 120 + Math.floor(Math.random() * 60);
+          this.freezeAlpha = 1;
+        }
+      }
+    } else {
+      // Reset freeze check timer when leaving arctic
+      this.freezeCheckTimer = 0;
+    }
+
+    // Handle frozen state
+    if (this.isFrozen) {
+      this.freezeTimer--;
+      if (this.freezeTimer <= 0) {
+        this.isFrozen = false;
+        this.freezeAlpha = 0;
+      } else if (this.freezeTimer < 30) {
+        // Fade out ice effect in last 0.5 seconds
+        this.freezeAlpha = this.freezeTimer / 30;
+      }
+      // Can't move while frozen
+      this.velocityX = 0;
+      this.velocityY = 0;
+      return { hitObstacle: false };
+    }
+
     // Wrap target position to handle infinite map cursor
     const maxX = MAP_WIDTH * TILE_SIZE;
     const maxY = MAP_HEIGHT * TILE_SIZE;
@@ -167,6 +208,57 @@ class Player {
     ctx.fillStyle = '#2c5282';
     ctx.fillRect(screenX - 8, screenY + 6, 6, 6 + legOffset);
     ctx.fillRect(screenX + 2, screenY + 6, 6, 6 + (5 - legOffset));
+
+    // Draw frozen ice effect when frozen
+    if (this.isFrozen || this.freezeAlpha > 0) {
+      const alpha = this.freezeAlpha;
+
+      // White ice overlay on the character body
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.6})`;
+      ctx.fillRect(screenX - 10, screenY - 14 + bobOffset, 20, 20);
+      ctx.fillRect(screenX - 8, screenY - 26 + bobOffset, 16, 14);
+      ctx.fillRect(screenX - 8, screenY + 6, 6, 12);
+      ctx.fillRect(screenX + 2, screenY + 6, 6, 12);
+
+      // Ice crystals around the character
+      ctx.fillStyle = `rgba(230, 230, 230, ${alpha * 0.9})`;
+      // Left crystals
+      ctx.beginPath();
+      ctx.moveTo(screenX - 18, screenY);
+      ctx.lineTo(screenX - 12, screenY - 8);
+      ctx.lineTo(screenX - 12, screenY + 8);
+      ctx.closePath();
+      ctx.fill();
+      // Right crystals
+      ctx.beginPath();
+      ctx.moveTo(screenX + 18, screenY);
+      ctx.lineTo(screenX + 12, screenY - 8);
+      ctx.lineTo(screenX + 12, screenY + 8);
+      ctx.closePath();
+      ctx.fill();
+      // Top crystal
+      ctx.beginPath();
+      ctx.moveTo(screenX, screenY - 38 + bobOffset);
+      ctx.lineTo(screenX - 6, screenY - 28 + bobOffset);
+      ctx.lineTo(screenX + 6, screenY - 28 + bobOffset);
+      ctx.closePath();
+      ctx.fill();
+
+      // Frost sparkles
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      for (let i = 0; i < 6; i++) {
+        const sparkleX = screenX - 15 + (i % 3) * 15;
+        const sparkleY = screenY - 25 + Math.floor(i / 3) * 30;
+        ctx.beginPath();
+        ctx.arc(sparkleX, sparkleY, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Ice outline glow
+      ctx.strokeStyle = `rgba(200, 200, 200, ${alpha * 0.7})`;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(screenX - 12, screenY - 28 + bobOffset, 24, 44);
+    }
   }
 
   addGold(amount) {

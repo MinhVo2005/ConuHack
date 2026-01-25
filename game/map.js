@@ -333,7 +333,8 @@ class GameMap {
 
     const envProps = { ...ENV_PROPERTIES[tile.type] };
 
-    if (tile.type === ENV_TYPES.WINDY && tile.zone) {
+    // Add wind direction for any zone with wind speed > 0
+    if (tile.zone && tile.zone.windDirection && envProps.windSpeed > 0) {
       envProps.windDirection = tile.zone.windDirection;
     }
 

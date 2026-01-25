@@ -67,7 +67,7 @@ class EffectsManager {
 
       case ENV_TYPES.ARCTIC:
         this.frostAlpha = 0.6;
-        this.overlayColor = 'rgba(200, 230, 255, 0.15)';
+        this.overlayColor = 'rgba(255, 255, 255, 0.15)';
         this.overlayAlpha = 1;
         break;
 
@@ -186,7 +186,7 @@ class EffectsManager {
           ctx.fill();
 
           // Snow sparkle
-          ctx.fillStyle = `rgba(200, 230, 255, ${alpha * 0.5})`;
+          ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.5})`;
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.size * 1.5, 0, Math.PI * 2);
           ctx.fill();
@@ -219,13 +219,13 @@ class EffectsManager {
         CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.3,
         CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.7
       );
-      gradient.addColorStop(0, 'rgba(200, 230, 255, 0)');
-      gradient.addColorStop(1, `rgba(200, 230, 255, ${this.frostAlpha})`);
+      gradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+      gradient.addColorStop(1, `rgba(255, 255, 255, ${this.frostAlpha})`);
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
       // Ice crystals on edges
-      ctx.fillStyle = `rgba(220, 240, 255, ${this.frostAlpha * 0.4})`;
+      ctx.fillStyle = `rgba(255, 255, 255, ${this.frostAlpha * 0.4})`;
       for (let i = 0; i < 20; i++) {
         const x = Math.random() < 0.5 ? Math.random() * 100 : CANVAS_WIDTH - Math.random() * 100;
         const y = Math.random() * CANVAS_HEIGHT;
