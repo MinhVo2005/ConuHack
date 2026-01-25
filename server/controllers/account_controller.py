@@ -28,7 +28,7 @@ def get_account_summary(user_id: str, db: Session = Depends(get_db)):
 def get_account_by_type(user_id: str, account_type: str, db: Session = Depends(get_db)):
     """Get account by type."""
     service = AccountService(db)
-    account = service.get_account_by_type(user_id, account_type)
+    account = service.get_account_aby_type(user_id, account_type)
     return account
 
 
