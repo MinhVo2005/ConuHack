@@ -72,104 +72,84 @@ extension RegionX on Region {
   }
 }
 
-// -------------------- Data model --------------------
-
-class Transaction {
-  final String fromAccId;
-  final String toAccId;
-  final int dollar; // keep as int per prompt
-
-  const Transaction({
-    required this.fromAccId,
-    required this.toAccId,
-    required this.dollar,
-  });
-}
-
-class Account {
-  final String name;
-  final String id;
-  final int balance;
-  final List<Transaction> transactionHistory;
-
-  const Account({
-    required this.name,
-    required this.id,
-    required this.balance,
-    required this.transactionHistory,
-  });
-}
-
-class User {
-  final String id;
-  final List<Account> accounts;
-  final int creditScore;
-
-  const User({
-    required this.id,
-    required this.accounts,
-    required this.creditScore,
-  });
-}
-
-class Weather {
-  final int temperature;
-  final int humidity;
-  final int windSpeed;
-
-  const Weather({
-    required this.temperature,
-    required this.humidity,
-    required this.windSpeed,
-  });
-}
+// -------------------- Environment --------------------
 
 enum NoiseLevel { quiet, low, med, high, boomBoom }
 
-class DistanceToTreasure {
-  final int dx;
-  final int dy;
+class Environment {
+  final Region region;
+  final int temperature;
+  final int humidity;
+  final int windSpeed;
+  final int brightness;
+  final NoiseLevel noise;
 
-  const DistanceToTreasure(this.dx, this.dy);
+  const Environment({
+    required this.region,
+    required this.temperature,
+    required this.humidity,
+    required this.windSpeed,
+    required this.brightness,
+    required this.noise,
+  });
 }
 
-class WorldLocation {
-  final int x;
-  final int y;
+// -------------------- Data model --------------------
 
-  const WorldLocation(this.x, this.y);
-}
+class Account {
+  final String id;
+  final String name;
+  final int balance;
 
-// -------------------- Debug overrides --------------------
+  const Account({
+    required this.id,
+    required this.name,
+    required this.balance,
+  });
 
-class DebugOverrides {
-  Region? region;
-  int? temperature;
-  int? humidity;
-  int? windSpeed;
-  NoiseLevel? noise;
-  int? brightness; // 1..10
-  WorldLocation? location;
-  DistanceToTreasure? treasureDist;
-
-  bool get anyEnabled =>
-      region != null ||
-      temperature != null ||
-      humidity != null ||
-      windSpeed != null ||
-      noise != null ||
-      brightness != null ||
-      location != null ||
-      treasureDist != null;
-
-  void clear() {
-    region = null;
-    temperature = null;
-    humidity = null;
-    windSpeed = null;
-    noise = null;
-    brightness = null;
-    location = null;
-    treasureDist = null;
+  Account copyWith({
+    String? id,
+    String? name,
+    int? balance,
+  }) {
+    return Account(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      balance: balance ?? this.balance,
+    );
   }
+}
+
+class UserProfile {
+  final String id;
+  final String name;
+
+  const UserProfile({
+    required this.id,
+    required this.name,
+  });
+}
+
+class TransactionEntry {
+  final String id;
+  final String description;
+  final int amount;
+  final bool isDebit;
+
+  const TransactionEntry({
+    required this.id,
+    required this.description,
+    required this.amount,
+    required this.isDebit,
+  });
+}
+
+class Payee {
+  final String id;
+  final String name;
+
+  const Payee({
+    required this.id,
+    required this.name,
+  });
 }
