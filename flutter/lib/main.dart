@@ -1,0 +1,6 @@
+// main.dart
+import 'package:flutter/material.dart';
+
+import 'view.dart';
+
+void main() => runApp(const BankWorldApp());

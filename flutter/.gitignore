@@ -1,24 +1,8 @@
 # Miscellaneous
 *.class
-# Dependencies
-node_modules/
-
-# Database files
-*.db
-
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# Logs
-logs/
 *.log
 *.pyc
 *.swp
-npm-debug.log*
-
-# OS files
 .DS_Store
 .atom/
 .build/
@@ -27,17 +11,12 @@ npm-debug.log*
 .svn/
 .swiftpm/
 migrate_working_dir/
-Thumbs.db
 
 # IntelliJ related
 *.iml
 *.ipr
 *.iws
-# IDE
 .idea/
-.vscode/
-*.swp
-*.swo
 
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
@@ -64,5 +43,3 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-# Claude Code
-.claude/
