@@ -6,7 +6,7 @@ import uvicorn
 import os
 
 from database import SessionLocal, init_db
-from controllers import user_router, account_router, transaction_router, environment_router, speech_to_text_router
+from controllers import user_router, account_router, transaction_router, environment_router, speech_to_text_router, voice_command_router
 from services.user_service import UserService
 from services.account_service import AccountService
 from services.transaction_service import TransactionService
@@ -36,6 +36,7 @@ app.include_router(account_router)
 app.include_router(transaction_router)
 app.include_router(environment_router)
 app.include_router(speech_to_text_router)
+app.include_router(voice_command_router)
 
 # Mount static files for game
 game_path = os.path.join(os.path.dirname(__file__), "..", "game")

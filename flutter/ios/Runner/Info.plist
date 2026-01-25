@@ -45,5 +45,8 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Microphone permission for voice commands -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs microphone access to process voice commands for banking operations.</string>
 </dict>
 </plist>

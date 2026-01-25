@@ -8,3 +8,4 @@ pytest
 httpx
 elevenlabs
 python-dotenv
+google-generativeai
