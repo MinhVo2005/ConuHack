@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
+import 'dart:ui' show VoidCallback;
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:record/record.dart';
@@ -49,6 +50,29 @@ enum VoiceCommandState {
 
 /// Callback type for state changes
 typedef VoiceStateCallback = void Function(VoiceCommandState state, {String? message, String? error, VoiceCommandErrorType? errorType});
+
+/// Global notifier for account refresh after voice commands
+/// HomeAccountsPage subscribes to this to know when to refresh
+class AccountRefreshNotifier {
+  static final AccountRefreshNotifier instance = AccountRefreshNotifier._();
+  AccountRefreshNotifier._();
+
+  final List<VoidCallback> _listeners = [];
+
+  void addListener(VoidCallback listener) {
+    _listeners.add(listener);
+  }
+
+  void removeListener(VoidCallback listener) {
+    _listeners.remove(listener);
+  }
+
+  void notifyRefresh() {
+    for (final listener in _listeners) {
+      listener();
+    }
+  }
+}
 
 class VoiceCommandService {
   static final VoiceCommandService _instance = VoiceCommandService._internal();
@@ -390,6 +414,8 @@ class VoiceCommandService {
       // Notify on successful command (so app can refresh data)
       if (success) {
         onCommandSuccess?.call(action, data);
+        // Trigger global refresh for account data
+        AccountRefreshNotifier.instance.notifyRefresh();
       }
 
       // Show the response and play TTS

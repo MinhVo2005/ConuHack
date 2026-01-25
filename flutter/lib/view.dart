@@ -9,6 +9,7 @@ import 'package:flutter/scheduler.dart';
 import 'api.dart';
 import 'models.dart';
 import 'backend_service.dart';
+import 'voice_command_service.dart' show AccountRefreshNotifier;
 
 ThemeData _buildTheme(BankColors colors) {
   return ThemeData(
@@ -1141,6 +1142,15 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
       Duration(seconds: _useBackend ? 5 : 1),
       (_) => _refreshEnvironment(),
     );
+
+    // Listen for voice command refresh notifications
+    AccountRefreshNotifier.instance.addListener(_onVoiceCommandRefresh);
+  }
+
+  void _onVoiceCommandRefresh() {
+    if (!mounted) return;
+    debugPrint('Voice command completed - refreshing accounts');
+    _refreshAccounts();
   }
 
   void _initData() {
@@ -1229,6 +1239,7 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
   @override
   void dispose() {
     _environmentTimer?.cancel();
+    AccountRefreshNotifier.instance.removeListener(_onVoiceCommandRefresh);
     super.dispose();
   }
 
