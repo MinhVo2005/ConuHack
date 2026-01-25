@@ -35,6 +35,8 @@ app.post('/api/exchange-gold', TransactionController.exchangeGold);
 app.get('/api/user/:userId/transactions', TransactionController.getTransactionHistory);
 app.get('/api/account/:accountId/transactions', TransactionController.getAccountTransactions);
 app.get('/api/gold-rate', TransactionController.getGoldRate);
+app.post('/api/send', TransactionController.sendMoney);
+app.get('/api/users', TransactionController.findUsers);
 
 // Environment routes
 app.get('/api/environment', EnvironmentController.getEnvironment);
@@ -202,6 +204,57 @@ describe('API Controllers', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(2);
+    });
+
+    it('POST /api/send - should send money between users', async () => {
+      // Create second user
+      await request(app).post('/api/user').send({ id: 'user2', name: 'User Two' });
+
+      const res = await request(app)
+        .post('/api/send')
+        .send({ fromUserId: 'user1', toUserId: 'user2', amount: 250 });
+
+      expect(res.status).toBe(201);
+      expect(res.body.transaction.amount).toBe(250);
+      expect(res.body.message).toContain('user1');
+      expect(res.body.message).toContain('user2');
+
+      // Verify balances
+      const user1Summary = await request(app).get('/api/user/user1/accounts/summary');
+      const user2Summary = await request(app).get('/api/user/user2/accounts/summary');
+
+      expect(user1Summary.body.checking.balance).toBe(750); // 1000 - 250
+      expect(user2Summary.body.checking.balance).toBe(1250); // 1000 + 250
+    });
+
+    it('POST /api/send - should return 400 for same user', async () => {
+      const res = await request(app)
+        .post('/api/send')
+        .send({ fromUserId: 'user1', toUserId: 'user1', amount: 100 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('yourself');
+    });
+
+    it('GET /api/users - should list all users', async () => {
+      await request(app).post('/api/user').send({ id: 'alice', name: 'Alice' });
+      await request(app).post('/api/user').send({ id: 'bob', name: 'Bob' });
+
+      const res = await request(app).get('/api/users');
+
+      expect(res.status).toBe(200);
+      expect(res.body.length).toBeGreaterThanOrEqual(3); // user1, alice, bob
+    });
+
+    it('GET /api/users?search= - should filter users', async () => {
+      await request(app).post('/api/user').send({ id: 'alice', name: 'Alice' });
+      await request(app).post('/api/user').send({ id: 'bob', name: 'Bob' });
+
+      const res = await request(app).get('/api/users?search=alice');
+
+      expect(res.status).toBe(200);
+      expect(res.body.length).toBe(1);
+      expect(res.body[0].id).toBe('alice');
     });
   });
 

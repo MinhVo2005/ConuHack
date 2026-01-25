@@ -170,6 +170,50 @@ const TransactionController = {
       currency: 'USD',
       description: '1 gold bar = $' + TransactionService.getGoldBarValue()
     });
+  },
+
+  // POST /api/send
+  sendMoney(req, res) {
+    try {
+      const { fromUserId, toUserId, amount, fromAccountType, toAccountType, description } = req.body;
+
+      if (!fromUserId || !toUserId || amount === undefined) {
+        return res.status(400).json({ error: 'fromUserId, toUserId, and amount are required' });
+      }
+
+      const transaction = TransactionService.sendMoney(
+        fromUserId,
+        toUserId,
+        parseFloat(amount),
+        fromAccountType || 'checking',
+        toAccountType || 'checking',
+        description || ''
+      );
+
+      res.status(201).json({
+        transaction,
+        message: `Successfully sent $${amount} from ${fromUserId} to ${toUserId}`
+      });
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        res.status(404).json({ error: error.message });
+      } else if (error.message.includes('Insufficient') || error.message.includes('Cannot') || error.message.includes('must be')) {
+        res.status(400).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: error.message });
+      }
+    }
+  },
+
+  // GET /api/users
+  findUsers(req, res) {
+    try {
+      const searchTerm = req.query.search || '';
+      const users = TransactionService.findUsers(searchTerm);
+      res.json(users);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   }
 };
 

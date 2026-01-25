@@ -246,4 +246,91 @@ describe('TransactionService', () => {
       expect(TransactionService.getGoldBarValue()).toBe(7000);
     });
   });
+
+  describe('sendMoney', () => {
+    let alice, bob;
+
+    beforeEach(() => {
+      alice = UserService.createUser('alice', 'Alice');
+      bob = UserService.createUser('bob', 'Bob');
+    });
+
+    it('should send money between users', () => {
+      const transaction = TransactionService.sendMoney('alice', 'bob', 100);
+
+      expect(transaction.type).toBe('transfer');
+      expect(transaction.amount).toBe(100);
+
+      const aliceChecking = AccountService.getAccountByType('alice', 'checking');
+      const bobChecking = AccountService.getAccountByType('bob', 'checking');
+
+      expect(aliceChecking.balance).toBe(900); // 1000 - 100
+      expect(bobChecking.balance).toBe(1100); // 1000 + 100
+    });
+
+    it('should send from savings to checking', () => {
+      TransactionService.sendMoney('alice', 'bob', 50, 'savings', 'checking');
+
+      const aliceSavings = AccountService.getAccountByType('alice', 'savings');
+      const bobChecking = AccountService.getAccountByType('bob', 'checking');
+
+      expect(aliceSavings.balance).toBe(450); // 500 - 50
+      expect(bobChecking.balance).toBe(1050); // 1000 + 50
+    });
+
+    it('should throw error when sending to yourself', () => {
+      expect(() => {
+        TransactionService.sendMoney('alice', 'alice', 100);
+      }).toThrow('Cannot send money to yourself');
+    });
+
+    it('should throw error for nonexistent sender', () => {
+      expect(() => {
+        TransactionService.sendMoney('nobody', 'bob', 100);
+      }).toThrow('Sender not found');
+    });
+
+    it('should throw error for nonexistent recipient', () => {
+      expect(() => {
+        TransactionService.sendMoney('alice', 'nobody', 100);
+      }).toThrow('Recipient not found');
+    });
+
+    it('should throw error for insufficient balance', () => {
+      expect(() => {
+        TransactionService.sendMoney('alice', 'bob', 5000);
+      }).toThrow('Insufficient balance');
+    });
+
+    it('should throw error for treasure chest', () => {
+      expect(() => {
+        TransactionService.sendMoney('alice', 'bob', 100, 'treasure_chest', 'checking');
+      }).toThrow('Cannot send money to/from treasure chest');
+    });
+  });
+
+  describe('findUsers', () => {
+    beforeEach(() => {
+      UserService.createUser('alice', 'Alice Smith');
+      UserService.createUser('bob', 'Bob Jones');
+      UserService.createUser('charlie', 'Charlie Brown');
+    });
+
+    it('should return all users when no search term', () => {
+      const users = TransactionService.findUsers();
+      expect(users.length).toBe(4); // 3 new + testuser from outer beforeEach
+    });
+
+    it('should filter users by id', () => {
+      const users = TransactionService.findUsers('ali');
+      expect(users.length).toBe(1);
+      expect(users[0].id).toBe('alice');
+    });
+
+    it('should filter users by name', () => {
+      const users = TransactionService.findUsers('jones');
+      expect(users.length).toBe(1);
+      expect(users[0].id).toBe('bob');
+    });
+  });
 });

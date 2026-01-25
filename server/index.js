@@ -56,6 +56,8 @@ app.post('/api/deposit', TransactionController.deposit);
 app.post('/api/withdraw', TransactionController.withdraw);
 app.post('/api/collect-gold', TransactionController.collectGold);
 app.post('/api/exchange-gold', TransactionController.exchangeGold);
+app.post('/api/send', TransactionController.sendMoney);
+app.get('/api/users', TransactionController.findUsers);
 app.get('/api/user/:userId/transactions', TransactionController.getTransactionHistory);
 app.get('/api/account/:accountId/transactions', TransactionController.getAccountTransactions);
 app.get('/api/gold-rate', TransactionController.getGoldRate);
@@ -184,6 +186,43 @@ io.on('connection', (socket) => {
     try {
       const summary = AccountService.getAccountSummary(playerId);
       socket.emit('accountSummary', summary);
+    } catch (error) {
+      socket.emit('error', { message: error.message });
+    }
+  });
+
+  // Send money to another user
+  socket.on('sendMoney', (data) => {
+    const { fromUserId, toUserId, amount, fromAccountType, toAccountType, description } = data;
+
+    try {
+      const transaction = TransactionService.sendMoney(
+        fromUserId,
+        toUserId,
+        amount,
+        fromAccountType || 'checking',
+        toAccountType || 'checking',
+        description || ''
+      );
+
+      const senderSummary = AccountService.getAccountSummary(fromUserId);
+      const recipientSummary = AccountService.getAccountSummary(toUserId);
+
+      // Notify sender
+      io.to(fromUserId).emit('moneySent', {
+        transaction,
+        summary: senderSummary,
+        recipient: toUserId
+      });
+
+      // Notify recipient
+      io.to(toUserId).emit('moneyReceived', {
+        transaction,
+        summary: recipientSummary,
+        sender: fromUserId
+      });
+
+      console.log(`${fromUserId} sent $${amount} to ${toUserId}`);
     } catch (error) {
       socket.emit('error', { message: error.message });
     }

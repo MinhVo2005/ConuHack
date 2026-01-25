@@ -180,6 +180,63 @@ const TransactionService = {
   // Get the gold bar exchange rate
   getGoldBarValue() {
     return GOLD_BAR_VALUE;
+  },
+
+  // Send money from one user to another
+  sendMoney(fromUserId, toUserId, amount, fromAccountType = 'checking', toAccountType = 'checking', description = '') {
+    if (amount <= 0) {
+      throw new Error('Amount must be positive');
+    }
+
+    if (fromUserId === toUserId) {
+      throw new Error('Cannot send money to yourself. Use transfer instead.');
+    }
+
+    if (!User.exists(fromUserId)) {
+      throw new Error(`Sender not found: ${fromUserId}`);
+    }
+    if (!User.exists(toUserId)) {
+      throw new Error(`Recipient not found: ${toUserId}`);
+    }
+
+    const fromAccount = Account.findByUserIdAndType(fromUserId, fromAccountType);
+    const toAccount = Account.findByUserIdAndType(toUserId, toAccountType);
+
+    if (!fromAccount) {
+      throw new Error(`Sender's ${fromAccountType} account not found`);
+    }
+    if (!toAccount) {
+      throw new Error(`Recipient's ${toAccountType} account not found`);
+    }
+
+    if (fromAccountType === 'treasure_chest' || toAccountType === 'treasure_chest') {
+      throw new Error('Cannot send money to/from treasure chest');
+    }
+
+    if (fromAccount.balance < amount) {
+      throw new Error('Insufficient balance');
+    }
+
+    // Perform transfer
+    Account.subtractFromBalance(fromAccount.id, amount);
+    Account.addToBalance(toAccount.id, amount);
+
+    // Record transaction
+    const desc = description || `Payment to ${toUserId}`;
+    return Transaction.create(fromAccount.id, toAccount.id, amount, 'transfer', desc);
+  },
+
+  // Find users (for recipient lookup)
+  findUsers(searchTerm) {
+    const allUsers = User.findAll();
+    if (!searchTerm) {
+      return allUsers;
+    }
+    const term = searchTerm.toLowerCase();
+    return allUsers.filter(u =>
+      u.id.toLowerCase().includes(term) ||
+      u.name.toLowerCase().includes(term)
+    );
   }
 };
 
