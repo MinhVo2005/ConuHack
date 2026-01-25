@@ -207,7 +207,7 @@ class Game {
     const screenY = this.mouseY - this.cameraY;
 
     // Draw crosshair
-    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
     this.ctx.lineWidth = 2;
 
     this.ctx.beginPath();
