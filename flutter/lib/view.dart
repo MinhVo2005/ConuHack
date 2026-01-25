@@ -1081,6 +1081,7 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
       BackendService.connect(
         userId: widget.userId!,
         onEnvironmentUpdate: _onEnvironmentUpdate,
+        onGoldUpdate: _onGoldUpdate,
       );
     }
 
@@ -1118,11 +1119,13 @@ class _HomeAccountsPageState extends State<HomeAccountsPage> {
     });
   }
 
+  void _onGoldUpdate() {
+    if (!mounted) return;
+    _refreshAccounts();
+  }
+
   Environment _recordPeakDb(Environment env) {
-    final db = _noiseToDb(env.noise).toDouble();
-    if (db > _peakDb) {
-      _peakDb = db;
-    }
+    _peakDb = _noiseToDb(env.noise).toDouble();
     return env;
   }
 
@@ -1542,10 +1545,7 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
   }
 
   Environment _recordPeakDb(Environment env) {
-    final db = _noiseToDb(env.noise).toDouble();
-    if (db > _peakDb) {
-      _peakDb = db;
-    }
+    _peakDb = _noiseToDb(env.noise).toDouble();
     return env;
   }
 
@@ -2365,10 +2365,7 @@ class _MoneyActionPageState extends State<MoneyActionPage> {
   }
 
   Environment _recordPeakDb(Environment env) {
-    final db = _noiseToDb(env.noise).toDouble();
-    if (db > _peakDb) {
-      _peakDb = db;
-    }
+    _peakDb = _noiseToDb(env.noise).toDouble();
     return env;
   }
 

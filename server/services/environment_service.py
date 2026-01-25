@@ -7,6 +7,47 @@ class EnvironmentService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _coerce_int(self, value, field_name: str) -> int:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field_name} must be an integer"
+            )
+        if isinstance(value, float):
+            if not value.is_integer():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{field_name} must be an integer"
+                )
+            return int(value)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field_name} must be an integer"
+            )
+
+    def _normalize_int(self, value, default: int, min_value: int, max_value: int) -> int:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return default
+        try:
+            if isinstance(value, float):
+                value = int(round(value))
+            else:
+                value = int(value)
+        except (TypeError, ValueError):
+            return default
+        if value < min_value:
+            return min_value
+        if value > max_value:
+            return max_value
+        return value
+
     def get_environment(self) -> Environment:
         """Get current environment state."""
         env = self.db.query(Environment).filter(Environment.id == 1).first()
@@ -23,6 +64,28 @@ class EnvironmentService:
             self.db.add(env)
             self.db.commit()
             self.db.refresh(env)
+        else:
+            normalized_temperature = self._normalize_int(env.temperature, 20, -30, 50)
+            normalized_humidity = self._normalize_int(env.humidity, 50, 0, 100)
+            normalized_wind_speed = self._normalize_int(env.wind_speed, 0, 0, 60)
+            normalized_brightness = self._normalize_int(env.brightness, 5, 1, 10)
+            valid_noise = ["quiet", "low", "med", "high", "boomboom"]
+            normalized_noise = env.noise if env.noise in valid_noise else "quiet"
+
+            if (
+                env.temperature != normalized_temperature
+                or env.humidity != normalized_humidity
+                or env.wind_speed != normalized_wind_speed
+                or env.brightness != normalized_brightness
+                or env.noise != normalized_noise
+            ):
+                env.temperature = normalized_temperature
+                env.humidity = normalized_humidity
+                env.wind_speed = normalized_wind_speed
+                env.brightness = normalized_brightness
+                env.noise = normalized_noise
+                self.db.commit()
+                self.db.refresh(env)
         return env
 
     def update_environment(
@@ -37,6 +100,7 @@ class EnvironmentService:
         env = self.get_environment()
 
         if temperature is not None:
+            temperature = self._coerce_int(temperature, "Temperature")
             if temperature < -30 or temperature > 50:
                 raise HTTPException(
                     status_code=400,
@@ -45,6 +109,7 @@ class EnvironmentService:
             env.temperature = temperature
 
         if humidity is not None:
+            humidity = self._coerce_int(humidity, "Humidity")
             if humidity < 0 or humidity > 100:
                 raise HTTPException(
                     status_code=400,
@@ -53,6 +118,7 @@ class EnvironmentService:
             env.humidity = humidity
 
         if wind_speed is not None:
+            wind_speed = self._coerce_int(wind_speed, "Wind speed")
             if wind_speed < 0 or wind_speed > 60:
                 raise HTTPException(
                     status_code=400,
@@ -70,6 +136,7 @@ class EnvironmentService:
             env.noise = noise
 
         if brightness is not None:
+            brightness = self._coerce_int(brightness, "Brightness")
             if brightness < 1 or brightness > 10:
                 raise HTTPException(
                     status_code=400,
