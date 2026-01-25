@@ -48,5 +48,13 @@
 	<!-- Microphone permission for voice commands -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs microphone access to process voice commands for banking operations.</string>
+	<!-- Motion/Accelerometer permission for shake detection -->
+	<key>NSMotionUsageDescription</key>
+	<string>This app uses motion detection to enable voice commands when you shake your phone.</string>
+	<!-- Background audio for TTS playback -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 </dict>
 </plist>
