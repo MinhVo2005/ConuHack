@@ -2,18 +2,21 @@
 // Handles shake detection, audio recording, and voice command processing
 
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:record/record.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:convert';
 import 'backend_service.dart';
 import 'login_screen.dart'; // For UserSession
+
+// Conditional imports for file system operations
+import 'voice_command_io.dart' if (dart.library.html) 'voice_command_web.dart' as file_helper;
 
 /// Exception types for voice command errors
 class VoiceCommandException implements Exception {
@@ -45,7 +48,7 @@ enum VoiceCommandState {
 }
 
 /// Callback type for state changes
-typedef VoiceStateCallback = void Function(VoiceCommandState state, {String? message, String? error});
+typedef VoiceStateCallback = void Function(VoiceCommandState state, {String? message, String? error, VoiceCommandErrorType? errorType});
 
 class VoiceCommandService {
   static final VoiceCommandService _instance = VoiceCommandService._internal();
@@ -142,7 +145,11 @@ class VoiceCommandService {
     }
 
     if (status.isPermanentlyDenied) {
-      _setState(VoiceCommandState.error);
+      _setState(
+        VoiceCommandState.error,
+        error: 'Microphone permission permanently denied. Please enable it in settings.',
+        errorType: VoiceCommandErrorType.microphonePermissionPermanentlyDenied,
+      );
       throw VoiceCommandException(
         'Microphone permission permanently denied. Please enable it in settings.',
         VoiceCommandErrorType.microphonePermissionPermanentlyDenied,
@@ -150,7 +157,11 @@ class VoiceCommandService {
     }
 
     if (!status.isGranted) {
-      _setState(VoiceCommandState.error);
+      _setState(
+        VoiceCommandState.error,
+        error: 'Microphone permission denied.',
+        errorType: VoiceCommandErrorType.microphonePermissionDenied,
+      );
       throw VoiceCommandException(
         'Microphone permission denied.',
         VoiceCommandErrorType.microphonePermissionDenied,
@@ -163,8 +174,10 @@ class VoiceCommandService {
   /// Start recording audio
   Future<void> _startRecording() async {
     try {
-      // Check permission first
-      await _checkMicrophonePermission();
+      // Check permission first (skip on web as browser handles it)
+      if (!kIsWeb) {
+        await _checkMicrophonePermission();
+      }
 
       // Check if we can record
       if (!await _recorder.hasPermission()) {
@@ -174,20 +187,28 @@ class VoiceCommandService {
         );
       }
 
-      // Get temp directory for recording
-      final directory = await getTemporaryDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      _currentRecordingPath = '${directory.path}/voice_command_$timestamp.m4a';
+      // Get recording path (platform-specific)
+      _currentRecordingPath = await file_helper.getRecordingPath();
 
-      // Start recording
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          sampleRate: 16000,
-          numChannels: 1,
-        ),
-        path: _currentRecordingPath!,
-      );
+      // Configure recording based on platform
+      final config = kIsWeb
+          ? const RecordConfig(
+              encoder: AudioEncoder.opus,  // Better web support
+              sampleRate: 16000,
+              numChannels: 1,
+            )
+          : const RecordConfig(
+              encoder: AudioEncoder.aacLc,
+              sampleRate: 16000,
+              numChannels: 1,
+            );
+
+      // Start recording - on web, path is ignored and blob URL is returned
+      if (kIsWeb) {
+        await _recorder.start(config, path: '');
+      } else {
+        await _recorder.start(config, path: _currentRecordingPath!);
+      }
 
       _setState(VoiceCommandState.listening, message: 'Listening...');
 
@@ -198,10 +219,10 @@ class VoiceCommandService {
       });
     } catch (e) {
       if (e is VoiceCommandException) {
-        _setState(VoiceCommandState.error, error: e.message);
+        _setState(VoiceCommandState.error, error: e.message, errorType: e.type);
         rethrow;
       }
-      _setState(VoiceCommandState.error, error: 'Failed to start recording: $e');
+      _setState(VoiceCommandState.error, error: 'Failed to start recording: $e', errorType: VoiceCommandErrorType.recordingFailed);
       throw VoiceCommandException(
         'Failed to start recording: $e',
         VoiceCommandErrorType.recordingFailed,
@@ -234,24 +255,31 @@ class VoiceCommandService {
       await _uploadAndProcess(path);
     } catch (e) {
       if (e is VoiceCommandException) {
-        _setState(VoiceCommandState.error, error: e.message);
+        _setState(VoiceCommandState.error, error: e.message, errorType: e.type);
       } else {
-        _setState(VoiceCommandState.error, error: 'Processing failed: $e');
+        _setState(VoiceCommandState.error, error: 'Processing failed: $e', errorType: VoiceCommandErrorType.serverError);
       }
-      // Return to idle after showing error briefly
-      Future.delayed(const Duration(seconds: 2), () {
-        if (_state == VoiceCommandState.error) {
-          _setState(VoiceCommandState.idle);
-        }
-      });
+      // Return to idle after showing error briefly (but not for permission errors)
+      if (e is! VoiceCommandException ||
+          (e.type != VoiceCommandErrorType.microphonePermissionPermanentlyDenied &&
+           e.type != VoiceCommandErrorType.microphonePermissionDenied)) {
+        Future.delayed(const Duration(seconds: 3), () {
+          if (_state == VoiceCommandState.error) {
+            _setState(VoiceCommandState.idle);
+          }
+        });
+      }
     }
   }
 
   /// Upload audio file to server for transcription and command processing
   Future<void> _uploadAndProcess(String filePath) async {
     try {
-      final file = File(filePath);
-      if (!await file.exists()) {
+      // Read audio bytes using platform-specific helper
+      final Uint8List audioBytes;
+      try {
+        audioBytes = await file_helper.readAudioBytes(filePath);
+      } catch (e) {
         throw VoiceCommandException(
           'Recording file not found.',
           VoiceCommandErrorType.recordingFailed,
@@ -273,10 +301,14 @@ class VoiceCommandService {
       final transcribeUri = Uri.parse('${BackendService.apiUrl}/transcribe');
       final transcribeRequest = http.MultipartRequest('POST', transcribeUri);
 
-      transcribeRequest.files.add(await http.MultipartFile.fromPath(
+      // Add audio bytes as multipart file
+      final filename = kIsWeb ? 'voice_command.webm' : 'voice_command.m4a';
+      final mimeType = kIsWeb ? 'audio/webm' : 'audio/m4a';
+      transcribeRequest.files.add(http.MultipartFile.fromBytes(
         'file',
-        filePath,
-        filename: 'voice_command.m4a',
+        audioBytes,
+        filename: filename,
+        contentType: MediaType.parse(mimeType),
       ));
 
       final transcribeStreamedResponse = await transcribeRequest.send().timeout(
@@ -292,9 +324,7 @@ class VoiceCommandService {
       final transcribeResponse = await http.Response.fromStream(transcribeStreamedResponse);
 
       // Clean up temp file
-      try {
-        await file.delete();
-      } catch (_) {}
+      await file_helper.deleteFile(filePath);
 
       if (transcribeResponse.statusCode != 200) {
         throw VoiceCommandException(
@@ -382,12 +412,16 @@ class VoiceCommandService {
           _setState(VoiceCommandState.idle);
         }
       });
-    } on SocketException {
-      throw VoiceCommandException(
-        'Network unavailable. Please check your connection.',
-        VoiceCommandErrorType.networkUnavailable,
-      );
     } catch (e) {
+      // Handle network errors
+      if (e.toString().contains('SocketException') ||
+          e.toString().contains('ClientException') ||
+          e.toString().contains('Connection refused')) {
+        throw VoiceCommandException(
+          'Network unavailable. Please check your connection.',
+          VoiceCommandErrorType.networkUnavailable,
+        );
+      }
       if (e is VoiceCommandException) {
         rethrow;
       }
@@ -405,9 +439,9 @@ class VoiceCommandService {
     _setState(VoiceCommandState.idle);
   }
 
-  void _setState(VoiceCommandState newState, {String? message, String? error}) {
+  void _setState(VoiceCommandState newState, {String? message, String? error, VoiceCommandErrorType? errorType}) {
     _state = newState;
-    onStateChanged?.call(newState, message: message, error: error);
+    onStateChanged?.call(newState, message: message, error: error, errorType: errorType);
   }
 
   /// Manually trigger recording (for testing without shake)
@@ -447,13 +481,21 @@ class VoiceCommandService {
         return;
       }
 
-      // Save audio to temp file and play
-      final directory = await getTemporaryDirectory();
-      final audioFile = File('${directory.path}/tts_response.mp3');
-      await audioFile.writeAsBytes(ttsResponse.bodyBytes);
+      if (kIsWeb) {
+        // On web, use bytes source directly
+        final audioSource = AudioSource.uri(
+          Uri.dataFromBytes(ttsResponse.bodyBytes, mimeType: 'audio/mpeg'),
+        );
+        await _audioPlayer.setAudioSource(audioSource);
+      } else {
+        // On mobile, save to temp file and play
+        final audioPath = await file_helper.writeTempAudioFile(
+          ttsResponse.bodyBytes,
+          'tts_response.mp3',
+        );
+        await _audioPlayer.setFilePath(audioPath);
+      }
 
-      // Play the audio
-      await _audioPlayer.setFilePath(audioFile.path);
       await _audioPlayer.play();
 
       // Wait for playback to complete
@@ -461,10 +503,14 @@ class VoiceCommandService {
         (state) => state.processingState == ProcessingState.completed,
       );
 
-      // Clean up
-      try {
-        await audioFile.delete();
-      } catch (_) {}
+      // Clean up (mobile only)
+      if (!kIsWeb) {
+        final audioPath = await file_helper.writeTempAudioFile(
+          Uint8List(0),
+          'tts_response.mp3',
+        );
+        await file_helper.deleteFile(audioPath);
+      }
     } catch (e) {
       debugPrint('TTS playback error: $e');
     } finally {

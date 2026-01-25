@@ -2,6 +2,7 @@
 // Global visual overlay for voice command states
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'voice_command_service.dart';
 
 /// Global overlay widget that shows voice command status
@@ -31,6 +32,7 @@ class _VoiceCommandOverlayState extends State<VoiceCommandOverlay>
   VoiceCommandState _state = VoiceCommandState.idle;
   String? _message;
   String? _error;
+  VoiceCommandErrorType? _errorType;
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -74,11 +76,12 @@ class _VoiceCommandOverlayState extends State<VoiceCommandOverlay>
     super.dispose();
   }
 
-  void _onStateChanged(VoiceCommandState state, {String? message, String? error}) {
+  void _onStateChanged(VoiceCommandState state, {String? message, String? error, VoiceCommandErrorType? errorType}) {
     setState(() {
       _state = state;
       _message = message;
       _error = error;
+      _errorType = errorType;
     });
 
     // Control pulse animation
@@ -113,7 +116,28 @@ class _VoiceCommandOverlayState extends State<VoiceCommandOverlay>
       children: [
         widget.child,
         if (_state != VoiceCommandState.idle) _buildOverlay(),
+        // FAB for microphone - visible when idle or listening
+        if (_state == VoiceCommandState.idle || _state == VoiceCommandState.listening)
+          Positioned(
+            right: 16,
+            bottom: 32,
+            child: _buildMicFAB(),
+          ),
       ],
+    );
+  }
+
+  Widget _buildMicFAB() {
+    final isListening = _state == VoiceCommandState.listening;
+
+    return FloatingActionButton(
+      onPressed: () => _voiceService.toggleRecording(),
+      backgroundColor: isListening ? Colors.red : Theme.of(context).primaryColor,
+      child: Icon(
+        isListening ? Icons.stop : Icons.mic,
+        color: Colors.white,
+        size: 28,
+      ),
     );
   }
 
@@ -280,7 +304,7 @@ class _VoiceCommandOverlayState extends State<VoiceCommandOverlay>
     return Column(
       children: [
         Text(
-          'Shake again to stop',
+          'Tap the mic button to stop',
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.7),
             fontSize: 14,
@@ -301,6 +325,12 @@ class _VoiceCommandOverlayState extends State<VoiceCommandOverlay>
   }
 
   Widget _buildRetryButton() {
+    final isPermanentlyDenied = _errorType == VoiceCommandErrorType.microphonePermissionPermanentlyDenied;
+
+    if (isPermanentlyDenied) {
+      return _buildPermissionDeniedInstructions();
+    }
+
     return ElevatedButton(
       onPressed: () => _voiceService.toggleRecording(),
       style: ElevatedButton.styleFrom(
@@ -309,6 +339,81 @@ class _VoiceCommandOverlayState extends State<VoiceCommandOverlay>
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
       ),
       child: const Text('Try Again'),
+    );
+  }
+
+  Widget _buildPermissionDeniedInstructions() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.settings,
+            color: Colors.white,
+            size: 32,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Enable Microphone Access',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            kIsWeb
+                ? 'To enable microphone:\n\n'
+                  '1. Click the lock/info icon in the address bar\n'
+                  '2. Find "Microphone" in the permissions\n'
+                  '3. Change it to "Allow"\n'
+                  '4. Refresh the page'
+                : 'To enable microphone:\n\n'
+                  '1. Open your device Settings\n'
+                  '2. Go to Privacy > Microphone\n'
+                  '3. Enable access for this app',
+            textAlign: TextAlign.left,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              OutlinedButton(
+                onPressed: () => _voiceService.cancel(),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: const Text('Close'),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: () => _voiceService.toggleRecording(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: const Text('Try Again'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
