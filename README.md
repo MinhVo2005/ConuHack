@@ -2,21 +2,21 @@
 
 # G-Lovers
 
-**Jarvis-inspired gesture control interface for hands-free computing**
+**Dynamic banking application that utilizes a Jarvis-inspired gesture control interface for hands-free computing**
 
-A single smart glove that replaces mouse and keyboard using finger gestures, hand motion tracking, and voice input — designed for environments where touching peripherals is impractical, unsafe, or impossible.
-
+An two-in-one banking application that allows users to keep track of local real-time weather data and features unique privacy features.
 ---
 
 ## Social Impact Use Cases
 
-| Field | Problem | How GestureFlow Helps |
+| Problem | How GestureFlow Helps |
 |-------|---------|----------------------|
-| **Healthcare** | Surgeons/nurses can't touch keyboards during sterile procedures | Navigate patient records, imaging software, and EHRs without breaking sterile field |
 | **Accessibility** | Users with RSI, limited mobility, or motor impairments struggle with traditional input | Hands-free control reduces strain; customizable gestures accommodate different abilities |
-| **Industrial/Labs** | Workers in cleanrooms, factories, or labs wear PPE gloves | Operate systems without removing protective equipment |
-| **Rehabilitation** | Physical therapists lack quantitative finger mobility data | Track and log finger movement metrics for recovery monitoring |
-| **Food Service** | Health codes prohibit touching shared surfaces | Browse recipes, manage orders without cross-contamination |
+| **Demographic** | The integration of a haptic glove and speech to text operation allows all demographics including the elderly to use the application with ease. |
+| **Privacy** | "Invisibility Mode" permits the user to access their private banking information without the risk of their financial data being seen by others.|
+| **Efficiency** | The inclusion of real-time weather data on the dashboard of the banking application permits the users to check many forms of information on a single platform.|
+| **Visuals** | Unlike traditional banking applications, TheGardens' dynamic visual style keeps the layout modern and appealing|
+
 
 ---
 
@@ -26,8 +26,6 @@ A single smart glove that replaces mouse and keyboard using finger gestures, han
 |-----------|-------|---------|
 | Microcontroller | ESP32-WROOM-32U | Bluetooth HID, sensor processing |
 | IMU | MPU-9250 (9-axis) | Hand orientation → cursor control |
-| Flex Sensors [DIY](https://www.youtube.com/watch?v=zUN2ZYdYAUo) | x5 (one per finger) [Velostat](https://abra-electronics.com/robotics-embedded-electronics/e-textiles/materials/1361-ada-pressure-sensitive-conductive-sheet-velostat-linqstat-1361-ada.html) | Finger bend detection (binary: bent/not bent) |
-|Touch Sensor (Maybe)| ??? | Replace flex sensors|
 | Microphone | Electret/MEMS mic | Voice-to-text for keyboard replacement |
 | Power | USB or LiPo battery | Wired for hackathon demo |
 | Glove Base | Any fabric glove | Sensor mounting |
@@ -44,36 +42,15 @@ A single smart glove that replaces mouse and keyboard using finger gestures, han
 | Layer | Tech | Purpose |
 |-------|------|---------|
 | Firmware | Arduino IDE + ESP32 core | Sensor reading, BLE HID |
-| Desktop Client | Python | Receives BLE data, controls cursor/keyboard, STT processing |
-| Speech-to-Text | Whisper API / Google STT / ElevenLabs | Voice → text (streamed from glove mic to desktop) |
-| Dashboard | Web (React or HTML) | Real-time gesture display, connection status, input log |
-
----
-
-## Gesture Mapping (32 States)
-
-5 fingers × binary (bent/not bent) = 2⁵ = **32 possible gestures**
-
-| Gesture | Binary | Action |
-|---------|--------|--------|
-| All open | `00000` | Idle / tracking mode |
-| Index only | `01000` | Left click |
-| Index + Middle | `01100` | Right click |
-| Fist | `11111` | Hold to drag |
-| Thumb only | `10000` | Scroll mode (IMU Y-axis = scroll) |
-| Pinky only | `00001` | Voice input toggle |
-
-*22 more mappings customizable*
-
----
+| Desktop Client | JavaScript | Receives BLE data, controls cursor, STT processing |
+| Speech-to-Text | ElevenLabs API | Gemini API | Voice → text → Actions (streamed from glove mic or phone to backend server) |
+| Banking App Dashboard | IOS (XCode & Dart) | Real-time environment status, theme changing, acciybt balance changes |
 
 ## Dashboard Metrics
 
 - Connection status (BLE connected/disconnected)
-- Current gesture (visual hand diagram)
-- Active mode (cursor / scroll / voice)
+- Active mode (cursor / voice)
 - Recent inputs log (gesture history + voice transcriptions)
-
 ---
 
 ## Architecture
@@ -83,7 +60,7 @@ A single smart glove that replaces mouse and keyboard using finger gestures, han
   │                              │
   ├─ Flex sensors (x5)           │
   ├─ MPU-9250 (orientation)      │
-  ├─ Microphone ──────────────►  │ ── Speech-to-Text (Whisper)
+  ├─ Microphone ──────────────►  │ ── Speech-to-Text (ElevenLabs)
   │                              │
   └─ ESP32 ── BLE HID ────────►  │ ── Cursor/Keyboard Control
                                  │
@@ -103,15 +80,17 @@ A single smart glove that replaces mouse and keyboard using finger gestures, han
 ## Quick Start
 
 1. Flash ESP32 with firmware (`/firmware`)
-2. Run desktop client (`python client.py`)
+2. Run desktop client
 3. Pair glove via Bluetooth
 4. Open dashboard (`localhost:3000`)
-5. Calibrate flex sensors (follow on-screen prompts)
+5. Connect mobile application via XCode on a common network
 
 
 ## Future Improvements
 
-- Two-glove mode (1024 gestures)
+- Two-glove mode
+- Flex Sensor implementations
+- keyboard functionalities
 - On-device ML for custom gesture recognition
 - Haptic feedback for confirmations
 
