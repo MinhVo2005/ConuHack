@@ -10,14 +10,12 @@ An two-in-one banking application that allows users to keep track of local real-
 ## Social Impact Use Cases
 
 | Problem | How GestureFlow Helps |
-|-------|---------|----------------------|
-| **Accessibility** | Users with RSI, limited mobility, or motor impairments struggle with traditional input | Hands-free control reduces strain; customizable gestures accommodate different abilities |
+|---------|----------------------|
+| **Accessibility** | Users with RSI, limited mobility, or motor impairments struggle with traditional input. Hands-free control reduces strain; customizable gestures accommodate different abilities |
 | **Demographic** | The integration of a haptic glove and speech to text operation allows all demographics including the elderly to use the application with ease. |
 | **Privacy** | "Invisibility Mode" permits the user to access their private banking information without the risk of their financial data being seen by others.|
 | **Efficiency** | The inclusion of real-time weather data on the dashboard of the banking application permits the users to check many forms of information on a single platform.|
 | **Visuals** | Unlike traditional banking applications, TheGardens' dynamic visual style keeps the layout modern and appealing|
-
-
 ---
 
 ## Hardware
