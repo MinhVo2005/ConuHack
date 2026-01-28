@@ -6,6 +6,10 @@
 
 An two-in-one banking application that allows users to keep track of local real-time weather data and features unique privacy features.
 ---
+<img width="332" height="573" alt="image" src="https://github.com/user-attachments/assets/8ec1ac95-69cf-48dd-bacc-d92a4bcd1ce0" />
+<img width="300" height="573" alt="image" src="https://github.com/user-attachments/assets/704c9cf5-db2b-4b4c-8b22-2d25ab470412" />
+<img width="282" height="573" alt="image" src="https://github.com/user-attachments/assets/2796cdee-e2bc-4d18-9028-e247c3660d18" />
+<img width="392" height="464" alt="image" src="https://github.com/user-attachments/assets/ce94180e-4d3d-4638-8ee0-39187a3581ca" />
 
 ## Social Impact Use Cases
 
