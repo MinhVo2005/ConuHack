@@ -5,6 +5,7 @@
 **Dynamic banking application that utilizes a Jarvis-inspired gesture control interface for hands-free computing**
 
 An two-in-one banking application that allows users to keep track of local real-time weather data and features unique privacy features.
+
 ---
 <img width="332" height="573" alt="image" src="https://github.com/user-attachments/assets/8ec1ac95-69cf-48dd-bacc-d92a4bcd1ce0" />
 <img width="300" height="573" alt="image" src="https://github.com/user-attachments/assets/704c9cf5-db2b-4b4c-8b22-2d25ab470412" />
@@ -45,28 +46,48 @@ An two-in-one banking application that allows users to keep track of local real-
 |-------|------|---------|
 | Firmware | Arduino IDE + ESP32 core | Sensor reading, BLE HID |
 | Desktop Client | JavaScript | Receives BLE data, controls cursor, STT processing |
-| Speech-to-Text | ElevenLabs API | Gemini API | Voice → text → Actions (streamed from glove mic or phone to backend server) |
-| Banking App Dashboard | IOS (XCode & Dart) | Real-time environment status, theme changing, acciybt balance changes |
+| Speech-to-Text | ElevenLabs API, Gemini API | Voice → text → Actions (streamed from glove mic or phone to backend server) |
+| Banking App Dashboard | IOS (XCode & Dart) | Real-time environment status, theme changing, account balance changes |
 
 ## Dashboard Metrics
 
 - Connection status (BLE connected/disconnected)
-- Active mode (cursor / voice)
-- Recent inputs log (gesture history + voice transcriptions)
+- Active mode (Actions / voice)
+- Account balances
+- Payee history
+- Contact List
+- Transaction history
+  
 ---
 
 ## Architecture
 
 ```
-[Glove]                      [Desktop]
-  │                              │
-  ├─ Flex sensors (x5)           │
-  ├─ MPU-9250 (orientation)      │
-  ├─ Microphone ──────────────►  │ ── Speech-to-Text (ElevenLabs)
-  │                              │
-  └─ ESP32 ── BLE HID ────────►  │ ── Cursor/Keyboard Control
-                                 │
-                                 └─► Dashboard (localhost)
+[Glove]                          [Desktop]
+  │                                  │
+  ├─ Flex sensors (x5)               │
+  ├─ MPU-9250 (orientation)          │
+  ├─ Microphone ────────────────►   │ ── Speech-to-Text (ElevenLabs)
+  │                                  │
+  └─ ESP32 ── BLE HID ───────────►  │ ── Cursor / Keyboard Control
+                                     │
+                                     ├─ Dashboard (localhost)
+                                     │
+                                     └─ API Client
+                                          │
+                                          ▼
+                                [Backend Server]
+                                          │
+                     ┌────────────────────┴────────────────────┐
+                     │                                         │
+              Banking APIs                               Weather APIs
+          (account data, balances)                   (real-time status)
+                     │                                         │
+                     └────────────────────┬────────────────────┘
+                                          │
+                                          ▼
+                                    [Mobile App]
+                              (live data, alerts, UI)
 ```
 
 ---
@@ -109,7 +130,6 @@ An two-in-one banking application that allows users to keep track of local real-
 | **Portability** | Requires fixed camera setup | Self-contained, works anywhere |
 | **Sterile environments** | Camera can't be in surgical field | Glove is worn by user |
 | **Computational load** | GPU-intensive for real-time tracking | Lightweight processing on ESP32 |
-| **Precision** | Struggles with fine finger movements | Direct per-finger measurement |
 
 **TL;DR:** Cameras guess hand position from pixels. We measure it directly.
 
