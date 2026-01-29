@@ -34,7 +34,6 @@ An two-in-one banking application that allows users to keep track of local real-
 | Glove Base | Any fabric glove | Sensor mounting |
 
 **Wiring Summary:**
-- Flex sensors → ESP32 ADC pins (GPIO 32-36)
 - MPU-9250 → I²C (SDA: GPIO 21, SCL: GPIO 22)
 - Mic → ADC or I2S depending on module
 
@@ -65,29 +64,30 @@ An two-in-one banking application that allows users to keep track of local real-
 ```
 [Glove]                          [Desktop]
   │                                  │
-  ├─ Flex sensors (x5)               │
-  ├─ MPU-9250 (orientation)          │
-  ├─ Microphone ────────────────►   │ ── Speech-to-Text (ElevenLabs)
   │                                  │
-  └─ ESP32 ── BLE HID ───────────►  │ ── Cursor / Keyboard Control
+  ├─ MPU-9250 (orientation)          │
+  ├─ Microphone ────────────────►    ├─  Game (localhost)
+  │                                  │
+  └─ ESP32 ── BLE HID ───────────►   ├─  Environment query
                                      │
-                                     ├─ Dashboard (localhost)
+                                     ├─ Treasure Hunt Feature
                                      │
                                      └─ API Client
                                           │
                                           ▼
                                 [Backend Server]
                                           │
-                     ┌────────────────────┴────────────────────┐
-                     │                                         │
-              Banking APIs                               Weather APIs
-          (account data, balances)                   (real-time status)
-                     │                                         │
-                     └────────────────────┬────────────────────┘
+                     ┌────────────────────┴────────────────────┐────────────────────┐
+                     │                                         │                    |
+              Banking APIs                               Weather APIs            Speech-to-Text (ElevenLabs)
+          (account data, balances)                   (real-time status)             │
+                     │                                         │                 Gemini API / action Control
+                     └────────────────────┬────────────────────┘────────────────────┘
                                           │
                                           ▼
                                     [Mobile App]
                               (live data, alerts, UI)
+                               Dashboard (localhost)
 ```
 
 ---
